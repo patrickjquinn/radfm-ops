@@ -57,22 +57,60 @@ curl -s https://api.rad-fm.com/admin/me -H "Authorization: Bearer $TOKEN"
 # expect: {"userId":3,...,"role":"owner","can":{"read":true,"operate":true,"administer":true}}
 ```
 
-### 0.2 Create the Cloudflare API token
+### 0.2 Cloudflare API token — ✅ DONE
 
-See `.dev.vars.example` §1 for the exact permissions. Start read-only.
+Created as **`radfm-ops dashboard (read-only)`**, scoped to Patrick's account only:
 
-Then confirm Analytics Engine is actually receiving data — this is finding 3 and is still unverified:
+```
+Workers Observability : Read      logs, errors, the 4xx blind spot
+Account Analytics     : Read      Analytics Engine SQL + GraphQL metrics
+Workers Scripts       : Read      deploy history
+```
+
+No write permission anywhere — a compromise of this tool reads analytics and nothing else. Adding
+`Workers Scripts : Edit` later would enable rollback from the UI; grant it only when someone will
+actually use it.
+
+The value is in `.dev.vars` in **both** repos (gitignored, verified, `chmod 600`). It is not in git
+and not in any committed file. **It did pass through the session transcript that created it** — it is
+read-only and account-scoped so the exposure is minor, but roll it from the dashboard if you would
+rather not carry that.
+
+Verified: `GET /user/tokens/verify` → `status: active`.
+
+### 0.3 Analytics Engine — ✅ VERIFIED RECEIVING DATA
+
+This was finding 3, open through the whole build because it needed the token above.
 
 ```bash
 curl "https://api.cloudflare.com/client/v4/accounts/49b85a65aa7b9cd658945400b972d2b7/analytics_engine/sql" \
   -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
   -d "SELECT blob1 AS event, count() AS n FROM rad_fm_events
-      WHERE timestamp > now() - INTERVAL '1' DAY GROUP BY event"
+      WHERE timestamp > now() - INTERVAL '7' DAY GROUP BY event"
 ```
 
-Expect rows for `recs`, `dj`, `upstream`, and — from the most recent deploy onward — `play`. If it
-returns nothing, check that the binding is deployed before assuming the code path is cold. Writes
-are fire-and-forget, so an absent datapoint is not proof the event did not happen.
+Result on 5 Aug 2026 — `rad_fm_events` exists and is live:
+
+```
+  recs        732    2026-08-02 20:52 .. 2026-08-05 10:27
+  dj          307    2026-08-02 20:52 .. 2026-08-05 11:19
+  play         33    2026-08-05 08:26 .. 2026-08-05 11:16   <- starts at the deploy that added it
+  upstream      2
+  setlist       —    emitted per served listing; London cache 100/75 = 0.750
+```
+
+**The dashboard's headline panels can be built against real data today.** A worked example, the
+"is the DJ getting worse" panel, over 7 days: **264 `ok` out of 307 — an 86% pass rate.** The
+remainder is the guard doing its job: 16 `simile`, 8 `names-nothing`, 7 `too-short`, and a spread of
+`wrong-track` catches. Treat ~86% as the baseline and alert on a sustained drop.
+
+Two caveats that will otherwise cost someone an afternoon:
+
+- **Ingestion lag is real.** A datapoint can take longer than a minute to become queryable. I briefly
+  concluded an event was not firing when it simply had not landed yet. Do not treat one empty query
+  as proof a code path is cold.
+- **`ORDER BY timestamp` fails** with `unable to find type of column: "timestamp"` unless `timestamp`
+  is also selected. Aggregate with `GROUP BY` instead, or select it explicitly.
 
 ### 0.3 State you are inheriting from verification
 

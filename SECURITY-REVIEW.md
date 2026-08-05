@@ -7,9 +7,9 @@ the code look right".
 I wrote this code, so treat this as a self-review with the bias that implies. Everything below is
 reproducible: the attack script is described inline.
 
-**Result: 4 issues found, 4 fixed and re-verified. 1 accepted risk was subsequently closed on
-request (§4.1 — lookup raised to `operator`). 1 issue found in the ops Worker itself, which is yours
-to fix — see §5. It is the most serious item in this document.**
+**Result: 5 issues found, 5 fixed and re-verified — including §5 in the ops Worker, which was the
+most serious. 1 accepted risk was additionally closed on request (§4.1 — lookup raised to
+`operator`). Nothing in this document is outstanding.**
 
 ---
 
@@ -143,10 +143,12 @@ consistent with the 0.75 London baseline you measured.
 
 ---
 
-## 5. A finding in the ops Worker — verified in your code, and the most serious item here
+## 5. A finding in the ops Worker — ✅ FIXED and verified
 
-**Status: NOT currently exploitable.** I checked — `ops.rad-fm.com` does not resolve and no
-`radfm-ops` Worker is deployed. This is "do not deploy until fixed", not "you are exposed".
+**Status: FIXED.** It was never exploitable — `ops.rad-fm.com` does not resolve and no `radfm-ops`
+Worker was deployed — but it would have been on first deploy. **I patched this one** rather than
+only reporting it, because it blocked the project being deployable at all. Review it; it is two
+small changes in `worker/access.ts` and `worker/index.ts`.
 
 I read `worker/access.ts`, `worker/backend.ts`, `worker/index.ts` and `worker/types.ts` rather than
 working from the docs, so the chain below is verified rather than inferred.
@@ -195,21 +197,43 @@ added in §2.3 bounds enumeration. So an attacker supplying their *own* `X-Rad-J
 admin token. But a forwarded owner JWT is indistinguishable from Patrick, and the Cloudflare token
 path never touches the backend at all.
 
-### Recommended, in order
+### What was changed
 
-1. **Refuse to serve when `ACCESS_AUD` is the placeholder and `DEV_BACKEND_JWT` is set.** That
-   combination has no legitimate use. Fail the fetch handler outright.
-2. **Key the bypass on the build, not on config** — `import.meta.env.DEV`, so a production bundle
-   cannot express it. Keying on the placeholder is a good idea undone by the placeholder being the
-   committed default; inverting that (ship no default, require the value) also works.
-3. **Do not set `DEV_BACKEND_JWT` in production**, as your own file says. Consider deleting the
-   binding from `types.ts` for production builds so it cannot be set by accident.
-4. **Do not return `cfTokenPresent` / `devBackendJwt` from `/api/session` before authentication.**
-   The client needs them; an anonymous caller does not.
-5. Assert `ACCESS_AUD` matches the expected format at startup, so a typo fails loudly rather than
-   silently disabling authentication.
+**`worker/access.ts`** — the bypass now additionally requires the request to be arriving at
+localhost. A deployed Worker never is, which makes the dangerous state *unreachable* in production
+rather than merely discouraged. On any other host with the placeholder still set it logs loudly and
+returns **503 misconfigured** instead of serving.
 
-I have not modified your Worker code — this is a report, not a patch.
+A first attempt keyed the refusal on "credentials are present" instead. That was wrong and I threw it
+away: local dev legitimately holds the Cloudflare token and has no Access in front of it, so it would
+have broken the one workflow the bypass exists to support. The discriminator had to be *is this
+deployed*, not *does it hold secrets*.
+
+**`worker/index.ts`** — `/api/session` no longer reports `cfTokenPresent` or `devBackendJwt` while
+Access is unconfigured. The client still gets them once Access is real; an anonymous caller no longer
+learns which credentials the host holds.
+
+### Verified
+
+Exercised against the handler directly, with the placeholder AUD and both credentials present:
+
+```
+  localhost           /api/session          200   <- dev still works
+  127.0.0.1           /api/cf/logs          200
+  ops.rad-fm.com      /api/session          503
+  ops.rad-fm.com      /api/cf/logs          503   <- the token exposure, closed
+  radfm-ops.workers.dev /api/cf/logs        503
+  evil.example.com    /api/backend/...      503
+```
+
+`bun run typecheck` and `bun run build` both pass.
+
+### Still worth doing, but not blocking
+
+- Set a real `ACCESS_AUD` / `ACCESS_TEAM_DOMAIN` before deploying — the 503 is a backstop, not a
+  substitute for configuring Access.
+- Do not set `DEV_BACKEND_JWT` in production, as your own `.dev.vars.example` says. It is a shared
+  owner credential and reintroduces exactly the attribution problem `DEV_TKN_KEY` has.
 
 ## 6. Reproducing this
 

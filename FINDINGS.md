@@ -10,13 +10,13 @@ pulled the day this was written.
 These came out of the research rather than being the point of it. The first two changed what the
 dashboard could honestly display, so they gated Phase 2.
 
-**Status: 1 and 2 are FIXED, deployed and VERIFIED IN PRODUCTION (5 Aug 2026). 3 needs a token.**
+**Status: all three FIXED, deployed and VERIFIED IN PRODUCTION (5 Aug 2026).**
 
 | # | Finding | Status |
 |---|---|---|
 | 1 | `past_plays.played_at` NULL on every row | **Fixed** — write path, ordering, index; migration 0003 backfills |
 | 2 | No admin role anywhere | **Fixed** — `admin_users`, `admin_audit`, `adminAuth()`, 24 tests |
-| 3 | Analytics Engine written but never read | Instrumented further (`trackPlay`); still needs a token to confirm data is landing |
+| 3 | Analytics Engine written but never read | **Closed** — token created, dataset confirmed live with 1,074+ rows |
 
 ### 1. `past_plays.played_at` is NULL on every row — there is no play history  ✅ FIXED
 
@@ -88,13 +88,22 @@ It also failed closed before the migration ran: every route 404'd for everyone, 
 `isPrivilegedRequest()` accepts an admin JWT **or** the legacy dev key, so existing tooling keeps
 working. Retiring the dev key is now deleting a single branch in `src/lib/auth/admin.ts`.
 
-### 3. Analytics Engine is instrumented but never read  — still open, needs a token
+### 3. Analytics Engine is instrumented but never read  ✅ CLOSED
 
-`src/lib/analytics.ts` writes three rich event types into `rad_fm_events` from live code paths.
-Nothing queries it. This is the best data in the system and it is currently write-only.
+`src/lib/analytics.ts` writes into `rad_fm_events` from live code paths, and nothing queried it. It
+was the best data in the system and effectively write-only.
 
-**Unverified:** I could not confirm datapoints are actually landing, because that needs a
-Cloudflare API token that does not exist yet. Day-one check:
+**Now confirmed receiving data.** A read-only API token was created and the dataset queried directly:
+`recs` 732, `dj` 307, `play` 33, `upstream` 2 over 7 days, plus `setlist`. `play` first appears at
+the exact deploy that introduced it, which is as good a confirmation as the pipeline can give.
+
+Two events were added during this work: `trackPlay` (the listening history D1 structurally cannot
+hold) and `trackSetlist` (fill rate per served listing). `trackSetlist` initially fired only on a
+fresh upstream fetch, so cache hits and the stale fallback — the dominant serving paths — recorded
+nothing; it now records on all three and tags each with `served`.
+
+Full detail and the baselines worth alerting on are in `RUNBOOK.md` §0.3. The original check, for
+reference:
 
 ```bash
 curl "https://api.cloudflare.com/client/v4/accounts/49b85a65aa7b9cd658945400b972d2b7/analytics_engine/sql" \

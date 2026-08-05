@@ -21,14 +21,17 @@ app.get('/api/session', (c) =>
   c.json({
     email: c.get('email'),
     accessConfigured: !isUnconfigured(c.env),
-    cfTokenPresent: Boolean(c.env.CLOUDFLARE_API_TOKEN),
+    // Only reported once Access is genuinely configured. Under the local-dev bypass this endpoint is
+    // unauthenticated, and "which credentials does this host hold" is precisely the reconnaissance an
+    // anonymous caller should not get for free.
+    cfTokenPresent: isUnconfigured(c.env) ? undefined : Boolean(c.env.CLOUDFLARE_API_TOKEN),
     /**
      * Whether the Worker can reach /admin/* without the browser supplying a token.
      * The client needs this to know it may call /admin/me at all: gating that call
      * purely on a pasted token means the local dev fallback can never resolve a
      * role, and every role-gated control stays dark for the wrong reason.
      */
-    devBackendJwt: Boolean(c.env.DEV_BACKEND_JWT),
+    devBackendJwt: isUnconfigured(c.env) ? undefined : Boolean(c.env.DEV_BACKEND_JWT),
     backendOrigin: c.env.BACKEND_ORIGIN,
     scriptName: c.env.BACKEND_SCRIPT_NAME,
     /** Observability retains 3 days; the UI surfaces this rather than truncating silently. */

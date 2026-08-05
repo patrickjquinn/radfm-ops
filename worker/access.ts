@@ -37,11 +37,40 @@ const b64url = (s: string) =>
   Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 
 export const accessAuth: MiddlewareHandler<Ctx> = async (c, next) => {
-  // Local dev has no Access in front of the Worker. Guarded on the AUD still
-  // being unconfigured so this can never silently disable auth in production.
   if (isUnconfigured(c.env)) {
-    c.set('email', 'dev@localhost');
-    return next();
+    // The dev bypass exists because local dev has no Access in front of the Worker, and keying it on
+    // the AUD placeholder is deliberate — configuring Access closes it automatically rather than
+    // relying on anyone remembering.
+    //
+    // The gap was that the placeholder is what wrangler.jsonc SHIPS, so a deploy of the file as
+    // committed was an open deploy. /api/cf holds CLOUDFLARE_API_TOKEN, so production logs and
+    // analytics would have been served to anyone who found the hostname, with no DEV_BACKEND_JWT
+    // needed. Add DEV_BACKEND_JWT and it also proxies /admin/* with an owner credential attached.
+    //
+    // So the bypass now additionally requires the request to be arriving at localhost. A deployed
+    // Worker never is, which makes the dangerous state unreachable in production rather than merely
+    // discouraged — while local dev, which legitimately holds a token and has no Access, still works.
+    const host = new URL(c.req.url).hostname;
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.localhost');
+
+    if (isLocal) {
+      c.set('email', 'dev@localhost');
+      return next();
+    }
+
+    console.error(
+      '[access] REFUSING TO SERVE: ACCESS_AUD is still the placeholder on a non-local host. ' +
+        'Configure ACCESS_AUD and ACCESS_TEAM_DOMAIN before deploying — serving here would expose ' +
+        'this Worker\'s credentials unauthenticated.'
+    );
+    return c.json(
+      {
+        error: 'misconfigured',
+        detail:
+          'Cloudflare Access is not configured (ACCESS_AUD is still the placeholder). Refusing to serve rather than expose this Worker\'s credentials.'
+      },
+      503
+    );
   }
 
   const token =
