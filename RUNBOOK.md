@@ -74,6 +74,19 @@ Expect rows for `recs`, `dj`, `upstream`, and — from the most recent deploy on
 returns nothing, check that the binding is deployed before assuming the code path is cold. Writes
 are fire-and-forget, so an absent datapoint is not proof the event did not happen.
 
+### 0.3 State you are inheriting from verification
+
+Two harmless things that would otherwise look like someone changed production:
+
+- **`MAX_ENRICH` reads `source: kv`, `updatedBy: user 3`, value `25`.** That is the write path being
+  verified end to end, then restored. The value is identical to the compiled-in default, so
+  behaviour is unchanged. There is deliberately no DELETE endpoint — removing the key means deleting
+  `config:MAX_ENRICH` from the `CONFIG_KV` namespace by hand, and it is not worth doing.
+- **`admin_audit` has a handful of rows** from the same exercise: `config.write` with outcome `ok`
+  and several `denied`. They are real audit records of real requests, so they stay.
+
+Everything else — the other five config keys — reads `source: default`, untouched.
+
 ---
 
 ## 1. Health checks, in the order worth running
