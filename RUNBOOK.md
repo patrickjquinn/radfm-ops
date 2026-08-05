@@ -8,11 +8,23 @@ Day-one setup, and the checks worth running when something looks wrong.
 
 Two prerequisites, in this order.
 
-### 0.1 Apply migration 0003 (Patrick, or anyone with D1 write access)
+### 0.1 Apply migration 0003 — ✅ DONE, 5 August 2026
 
-Until this runs, **every `/admin/*` endpoint returns 404 for everyone, including the owner.** That
-is deliberate — the auth layer fails closed rather than admitting anyone when it cannot read the
-role table — but it means the dashboard has nothing to talk to.
+Applied to production: 7 queries, 34,881 rows read, 104,617 written, 1.7s. Nothing to do here; kept
+for reference and for bootstrapping a fresh environment.
+
+Verified afterwards:
+
+```
+admin_users                      3 | owner | patrick.jm.quinn@gmail.com
+past_plays.played_at IS NULL     0          (was 34,870)
+past_plays.played_at present     34,871
+duplicate (user_id, song)        0          <- dedup survived the PK-column backfill
+GET /admin/me as user 3          200 owner
+```
+
+Until it ran, **every `/admin/*` endpoint returned 404 for everyone, including the owner** — the auth
+layer fails closed rather than admitting anyone when it cannot read the role table.
 
 ```bash
 cd ~/Developer/rad-fm-backend

@@ -10,7 +10,7 @@ pulled the day this was written.
 These came out of the research rather than being the point of it. The first two changed what the
 dashboard could honestly display, so they gated Phase 2.
 
-**Status: 1 and 2 are FIXED and deployed. 3 still needs verifying on day one.**
+**Status: 1 and 2 are FIXED, deployed and VERIFIED IN PRODUCTION (5 Aug 2026). 3 needs a token.**
 
 | # | Finding | Status |
 |---|---|---|
@@ -54,9 +54,13 @@ hold. **Backfill of the events themselves is impossible** — they were never re
 historical listening chart can start from the deploy date and no earlier. Do not let anyone promise
 otherwise.
 
-Migration `0003_admin_rbac_and_played_at.sql` backfills `played_at` from `created_at` for existing
-rows. Track `dataQuality.pastPlaysMissingPlayedAt` from `/admin/stats`: it should fall to zero when
-the migration runs and stay there. If it climbs, the insert has regressed.
+Migration `0003` backfilled `played_at` from `created_at`. **Applied and verified in production:**
+0 rows still NULL, 34,871 populated, and **0 duplicate `(user_id, song)` groups** — the real risk was
+that updating a primary-key column across 34,871 rows would collide or fragment the table, and it did
+not. A recommendations call afterwards returned 10 unique tracks in 4s.
+
+Track `dataQuality.pastPlaysMissingPlayedAt` from `/admin/stats`: currently 0. If it climbs, the
+insert has regressed.
 
 ### 2. There is no admin role anywhere in the codebase  ✅ FIXED
 
@@ -66,8 +70,20 @@ one shared static string checked in seven places, not tied to any user and not a
 
 **What was done.** `admin_users` (viewer/operator/owner, seeded with user 3), `admin_audit`
 (append-only), and `adminAuth(minimum)` resolving the role from D1 on every request. 24 tests cover
-forged, expired, refresh-as-bearer, smuggled-role and missing-table cases. It fails closed, verified
-in production: with the migration unapplied every `/admin/*` route 404s for everyone, owner included.
+forged, expired, refresh-as-bearer, smuggled-role and missing-table cases.
+
+**Verified against production**, every case:
+
+| Credential | Result |
+|---|---|
+| user 3, valid | `200` — `role: owner` |
+| user 99, valid but not an admin | `404` |
+| refresh token as bearer | `404` |
+| expired owner token | `404` |
+| token signed with the wrong secret | `404` |
+| `role: "owner"` smuggled into the JWT body | `404` |
+
+It also failed closed before the migration ran: every route 404'd for everyone, owner included.
 
 `isPrivilegedRequest()` accepts an admin JWT **or** the legacy dev key, so existing tooling keeps
 working. Retiring the dev key is now deleting a single branch in `src/lib/auth/admin.ts`.
