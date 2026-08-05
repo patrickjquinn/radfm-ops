@@ -7,10 +7,18 @@ pulled the day this was written.
 
 ## Three things to fix before or during the build
 
-These came out of the research rather than being the point of it. The first two change what the
-dashboard is able to honestly display, so they are not "nice to haves" — they gate Phase 2.
+These came out of the research rather than being the point of it. The first two changed what the
+dashboard could honestly display, so they gated Phase 2.
 
-### 1. `past_plays.played_at` is NULL on every row — there is no play history
+**Status: 1 and 2 are FIXED and deployed. 3 still needs verifying on day one.**
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | `past_plays.played_at` NULL on every row | **Fixed** — write path, ordering, index; migration 0003 backfills |
+| 2 | No admin role anywhere | **Fixed** — `admin_users`, `admin_audit`, `adminAuth()`, 24 tests |
+| 3 | Analytics Engine written but never read | Instrumented further (`trackPlay`); still needs a token to confirm data is landing |
+
+### 1. `past_plays.played_at` is NULL on every row — there is no play history  ✅ FIXED
 
 ```
 SELECT COUNT(*) FROM past_plays;                          -- 34,870
@@ -32,18 +40,39 @@ collapsed to `(user_id, song)` and re-plays overwrite rather than append.
 
 Verified working numbers using `created_at`: **DAU 15, WAU 44** (against 631 registered users).
 
-**Recommendation:** treat play history as a new Analytics Engine event rather than trying to repair
-the table. `writeDataPoint` is built for exactly this — high volume, append-only, cheap — and the
-plumbing already exists in `src/lib/analytics.ts`. Backfill is not possible; the data was never
-written. Do not let anyone promise a historical listening chart.
+**What was done.** The insert now writes `played_at`, and ordering plus the index moved to
+`created_at` unconditionally — the old code *probed* for the column to decide what to order by, and
+the probe SUCCEEDED in production because the column exists and is merely empty. Detection was the
+bug, not a guard against it.
 
-### 2. There is no admin role anywhere in the codebase
+Dedup was verified unaffected: it is done by an explicit `DELETE` on `json_extract(song,'$.id')`,
+not by the primary key, so a real timestamp cannot turn the table into an append-only log. Three
+plays of one track still leave exactly one row.
 
-Covered in `README.md` §3. Summarised here because it is a finding, not a design choice: no `role`
-column, no `is_admin`, no permission check. The de facto admin credential is `DEV_TKN_KEY`, one
-shared static string checked in seven places, not tied to any user and not attributable in logs.
+`trackPlay()` in `src/lib/analytics.ts` now records the append-only history D1 structurally cannot
+hold. **Backfill of the events themselves is impossible** — they were never recorded anywhere — so a
+historical listening chart can start from the deploy date and no earlier. Do not let anyone promise
+otherwise.
 
-### 3. Analytics Engine is instrumented but never read
+Migration `0003_admin_rbac_and_played_at.sql` backfills `played_at` from `created_at` for existing
+rows. Track `dataQuality.pastPlaysMissingPlayedAt` from `/admin/stats`: it should fall to zero when
+the migration runs and stay there. If it climbs, the insert has regressed.
+
+### 2. There is no admin role anywhere in the codebase  ✅ FIXED
+
+Covered in `README.md` §3 and §3a. Summarised here because it was a finding, not a design choice: no
+`role` column, no `is_admin`, no permission check. The de facto admin credential was `DEV_TKN_KEY`,
+one shared static string checked in seven places, not tied to any user and not attributable in logs.
+
+**What was done.** `admin_users` (viewer/operator/owner, seeded with user 3), `admin_audit`
+(append-only), and `adminAuth(minimum)` resolving the role from D1 on every request. 24 tests cover
+forged, expired, refresh-as-bearer, smuggled-role and missing-table cases. It fails closed, verified
+in production: with the migration unapplied every `/admin/*` route 404s for everyone, owner included.
+
+`isPrivilegedRequest()` accepts an admin JWT **or** the legacy dev key, so existing tooling keeps
+working. Retiring the dev key is now deleting a single branch in `src/lib/auth/admin.ts`.
+
+### 3. Analytics Engine is instrumented but never read  — still open, needs a token
 
 `src/lib/analytics.ts` writes three rich event types into `rad_fm_events` from live code paths.
 Nothing queries it. This is the best data in the system and it is currently write-only.

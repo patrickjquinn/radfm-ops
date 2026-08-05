@@ -1,14 +1,20 @@
 # Rad.FM Ops Dashboard — build spec
 
-Research and design handover. **Nothing here is built yet.** This document is the brief.
+Build spec for the ops dashboard.
 
-Everything below was checked against the live system on 5 August 2026 — live D1, live
+**The dashboard itself is not built — that is your job.** But the backend half of Phase 0 *is* built
+and deployed: admin RBAC, an audit trail, and four read-only `/admin/*` endpoints. Two of the three
+blocking findings from the research have been fixed in the backend. §3a is the contract you code
+against; `FINDINGS.md` records what was wrong and what is now fixed.
+
+Everything here was checked against the live system on 5 August 2026 — live D1, live
 `wrangler.jsonc`, live source. Where a claim is inferred rather than verified, it says so.
 
 | File | What it is |
 |---|---|
 | `README.md` | This — architecture, RBAC, build phases |
 | `FINDINGS.md` | What the live system actually looks like today, including three problems to fix first |
+| `RUNBOOK.md` | **Start here on day one** — setup steps, health checks, known time-wasters |
 | `queries/d1.sql` | Ops queries, run against live D1 and annotated with real numbers |
 | `.dev.vars.example` | Every secret and token needed, with provenance |
 
@@ -67,10 +73,14 @@ second source of truth.
 
 ## 3. RBAC
 
-### What exists today — read this before designing
+> **STATUS: BUILT AND DEPLOYED.** The RBAC foundation described below now exists in the backend
+> (`src/lib/auth/admin.ts`, `src/users/routes/admin.ts`, `migrations/0003`). This section is kept as
+> the rationale. What you need to know to build against it is in §3a.
 
-**There is no admin role. None.** Verified by grep across `src/`: no `role` column, no `is_admin`,
-no permission check anywhere. The two privileged mechanisms that exist are:
+### What existed before this work
+
+**There was no admin role. None.** Verified by grep across `src/`: no `role` column, no `is_admin`,
+no permission check anywhere. The two privileged mechanisms were:
 
 1. **`DEV_TKN_KEY`**, checked as the `X-API-Key` header in 7 places
    (`src/rad/services/llm/index.ts`, `src/music/index.ts`, `src/users/routes/auth.ts`,
@@ -121,6 +131,50 @@ Once `adminAuth()` exists, the seven `X-API-Key` checks should move behind it. R
 string grants prompt-debug and forced re-auth across the whole API, with no attribution. That is a
 worse credential than anything the dashboard will introduce, and the dashboard is the natural moment
 to kill it.
+
+---
+
+## 3a. What is already built — the contract you code against
+
+Deployed to production. `admin_users` and `admin_audit` are created by
+`migrations/0003_admin_rbac_and_played_at.sql` in the backend repo.
+
+### Endpoints
+
+All under `https://api.rad-fm.com`, all gated by `adminAuth('viewer')`, all read-only.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /admin/me` | `{userId, email, role, can:{read, operate, administer}}` — call this first and shape the nav from `can` |
+| `GET /admin/stats` | Headline counters + `dataQuality.pastPlaysMissingPlayedAt` |
+| `GET /admin/audit?limit=50` | Recent admin actions, newest first |
+| `GET /admin/users/:id/entitlement` | User, local premium row, `premium_meta`, and last 20 `premium_audit` rows |
+
+Auth is the user's existing JWT as `Authorization: Bearer <token>`. There is no separate admin
+login — that is what "reuse the existing admin" resolved to.
+
+### Behaviours you must design around
+
+- **Unauthorised means 404, not 403.** Deliberate: a 403 confirms the surface exists and that the
+  caller merely lacks a role. Do not build UI that distinguishes "not allowed" from "not found" —
+  the API will not tell you, on purpose.
+- **Role is resolved server-side per request.** Do not cache it beyond a page load, and never read a
+  role from the token.
+- **It fails closed.** Before the migration is applied, every `/admin/*` route 404s for everyone,
+  including the owner. Verified in production. If the dashboard sees 404 for a known admin, check
+  the migration before debugging the client.
+- **`-1` is a "query failed" sentinel** in `/admin/stats`, not a real count. `premiumPct` is `null`
+  rather than a number derived from a sentinel. Render both as "unavailable".
+- **`activeUsers24h` / `activeUsers7d` are NOT listener counts.** Label them "users with play
+  activity". See `FINDINGS.md`.
+- **`/admin/users/:id/entitlement` degrades per-field**: `meta` or `audit` can be `null` while the
+  rest succeeds. Do not treat a null section as "no entitlement".
+
+### Mutations do not exist yet — by design
+
+`adminAuth('operator')`, `adminAuth('owner')` and `auditAdminAction()` are implemented and tested;
+no route uses them yet. The dashboard should earn trust on reads first. When you add the first
+mutation, it must write an audit row in the same handler — that is the whole point of the table.
 
 ---
 
@@ -284,9 +338,11 @@ what is already in the backend repo.
 
 Sequenced so each phase is independently useful and the risky part comes after the cheap wins.
 
-**Phase 0 — foundations.** Scaffold the Worker, wire Cloudflare Access, add `admin_users` + seed
-user 3, add `adminAuth()` to the backend, add the audit table. No UI beyond "you are logged in as
-owner". *This is the only phase with security-relevant decisions in it — get it reviewed.*
+**Phase 0 — foundations.** ✅ **The backend half is DONE and deployed** — `admin_users`,
+`admin_audit`, `adminAuth()`, the audit helper and four read-only `/admin/*` routes, with 24 tests
+covering forged, expired, refresh-as-bearer, smuggled-role and missing-table cases. See §3a.
+*Still to do here:* scaffold the ops Worker, wire Cloudflare Access, and verify the Access JWT
+against the JWKS. That remains the security-relevant part — get it reviewed.
 
 **Phase 1 — read-only health.** Requests / errors / CPU from GraphQL, **4xx by route** from
 Observability, grouped warnings, deploy history. Delivers most of the value; touches nothing.
