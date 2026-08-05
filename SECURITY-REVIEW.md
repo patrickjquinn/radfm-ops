@@ -138,43 +138,73 @@ consistent with the 0.75 London baseline you measured.
 
 ---
 
-## 5. A finding in the ops dashboard — yours, and the most serious item here
+## 5. A finding in the ops Worker — verified in your code, and the most serious item here
 
-From your own `.dev.vars.example`:
+**Status: NOT currently exploitable.** I checked — `ops.rad-fm.com` does not resolve and no
+`radfm-ops` Worker is deployed. This is "do not deploy until fixed", not "you are exposed".
 
-> while `ACCESS_AUD` is still the `REPLACE_WITH_APPLICATION_AUD` placeholder, the Worker runs its
-> local-dev bypass and every `/api` route is **UNAUTHENTICATED** … it does mean a half-configured
-> deploy is an open one.
+I read `worker/access.ts`, `worker/backend.ts`, `worker/index.ts` and `worker/types.ts` rather than
+working from the docs, so the chain below is verified rather than inferred.
 
-Keying the bypass on the placeholder is a genuinely nice idea — configuring Access closes it
-automatically. The problem is what it combines with.
+### Credit where it is due
 
-**The chain:** if `DEV_BACKEND_JWT` is ever set as a production secret while `ACCESS_AUD` is still the
-placeholder, then `ops.rad-fm.com` is an **unauthenticated public proxy holding an owner credential**.
-Anyone who finds the hostname gets everything the dashboard can do, attributed in `admin_audit` to
-whoever's token it is. Your own file warns against setting `DEV_BACKEND_JWT` in production, and you
-correctly identify it as the same attribution problem as `DEV_TKN_KEY` — but the two hazards are
-documented in separate sections and neither mentions the other, which is exactly how this gets
-deployed.
+The Access verification is genuinely well built, and several things that are easy to get wrong are
+right: `alg` is pinned to RS256 so an `alg: none` or HMAC downgrade cannot reach `importKey`; the
+JWKS key is selected by `kid`; `aud` is checked and handled as an array, which stops a token minted
+for a different Access app in the same team from validating; `exp` is required. `/api/cf/*` is a set
+of named queries rather than a passthrough, so the browser never gets the token's full authority.
+There is no D1 binding. `workers_dev` is `false`. None of that is accidental.
 
-The backend limits the blast radius but does not close it: the role check is server-side and cannot
-be bypassed from the client, and the new per-IP admin limiter caps enumeration. But if the proxy
-forwards a real owner JWT, the backend cannot tell that request from Patrick.
+### The chain
 
-**Recommended, in order:**
+Three things combine, each defensible alone:
 
-1. **Refuse to start when `ACCESS_AUD` is the placeholder and `DEV_BACKEND_JWT` is set.** That
-   combination has no legitimate use. Fail the fetch handler outright rather than serving.
-2. **Gate the bypass on the Vite dev server, not on a config value** — for example require
-   `import.meta.env.DEV`, so a production build cannot express the bypass at all.
-3. **Set `workers_dev: false`** on the ops Worker. The backend has it `true`, which means
-   `rad-fm-backend.veme.workers.dev` bypasses custom-domain protection; do not inherit that here.
-4. Consider a startup assertion that `ACCESS_AUD` matches the expected format, so a typo fails loudly
-   rather than silently disabling authentication.
+1. `wrangler.jsonc` **ships with** `"ACCESS_AUD": "REPLACE_WITH_APPLICATION_AUD"`.
+2. `isUnconfigured()` returns true for exactly that value, and `accessAuth` then calls `next()` —
+   so **every `/api/*` route is unauthenticated** on a deploy of the file as committed.
+3. `backend.ts` resolves its credential as
+   `c.req.header('X-Rad-Jwt') ?? c.env.DEV_BACKEND_JWT ?? ''`.
 
-I have not touched your repo beyond the docs — this is a report, not a patch.
+**The larger exposure does not need `DEV_BACKEND_JWT` at all.** With the placeholder in place,
+`/api/cf/*` is reachable by anyone and holds `CLOUDFLARE_API_TOKEN`: production logs, analytics and
+deploy history, served to the internet. The named-query design limits *what* can be asked, not *who*
+may ask.
 
----
+Add `DEV_BACKEND_JWT` as a production secret and it gets worse: the Worker attaches an owner JWT to
+any allowlisted `/admin/*` request with **no attacker-supplied token**, and `admin_audit` attributes
+the result to whoever owns that token.
+
+`/api/session` completes it. Unauthenticated under the bypass, it returns `accessConfigured`,
+`cfTokenPresent`, `devBackendJwt`, `backendOrigin` and `scriptName` — an oracle telling an attacker
+precisely which of the above is worth trying.
+
+Your `.dev.vars.example` documents both hazards, and correctly identifies `DEV_BACKEND_JWT` in
+production as the same attribution problem as `DEV_TKN_KEY`. They sit in separate sections and
+neither references the other, which is how a half-configured deploy gets shipped by someone who read
+both.
+
+### What the backend does and does not do about it
+
+The role check is server-side and cannot be bypassed from the client, and the per-IP admin limiter
+added in §2.3 bounds enumeration. So an attacker supplying their *own* `X-Rad-Jwt` still needs a real
+admin token. But a forwarded owner JWT is indistinguishable from Patrick, and the Cloudflare token
+path never touches the backend at all.
+
+### Recommended, in order
+
+1. **Refuse to serve when `ACCESS_AUD` is the placeholder and `DEV_BACKEND_JWT` is set.** That
+   combination has no legitimate use. Fail the fetch handler outright.
+2. **Key the bypass on the build, not on config** — `import.meta.env.DEV`, so a production bundle
+   cannot express it. Keying on the placeholder is a good idea undone by the placeholder being the
+   committed default; inverting that (ship no default, require the value) also works.
+3. **Do not set `DEV_BACKEND_JWT` in production**, as your own file says. Consider deleting the
+   binding from `types.ts` for production builds so it cannot be set by accident.
+4. **Do not return `cfTokenPresent` / `devBackendJwt` from `/api/session` before authentication.**
+   The client needs them; an anonymous caller does not.
+5. Assert `ACCESS_AUD` matches the expected format at startup, so a typo fails loudly rather than
+   silently disabling authentication.
+
+I have not modified your Worker code — this is a report, not a patch.
 
 ## 6. Reproducing this
 
