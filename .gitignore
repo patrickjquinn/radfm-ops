@@ -1,0 +1,11 @@
+# Secrets. This pattern ships on day zero deliberately: a .dev.vars.bak containing production
+# secrets was once committed to the backend repo. Only .dev.vars.example is ever tracked.
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+node_modules/
+dist/
+.wrangler/
+.DS_Store
+*.log

@@ -1,0 +1,324 @@
+# Rad.FM Ops Dashboard — build spec
+
+Research and design handover. **Nothing here is built yet.** This document is the brief.
+
+Everything below was checked against the live system on 5 August 2026 — live D1, live
+`wrangler.jsonc`, live source. Where a claim is inferred rather than verified, it says so.
+
+| File | What it is |
+|---|---|
+| `README.md` | This — architecture, RBAC, build phases |
+| `FINDINGS.md` | What the live system actually looks like today, including three problems to fix first |
+| `queries/d1.sql` | Ops queries, run against live D1 and annotated with real numbers |
+| `.dev.vars.example` | Every secret and token needed, with provenance |
+
+---
+
+## 1. What this is for
+
+Today, answering "is Rad.FM healthy?" means running `wrangler` by hand, reading the Workers Logs
+dashboard, and writing one-off scripts. That has already cost real incidents:
+
+- A stale `premium_users` row silently stripped paid segments from live subscribers. Invisible for
+  months.
+- 1,094 warnings in three days, ~60% of them one bug that had disabled setlists for a third of gigs.
+  Nothing threw, so nothing surfaced it.
+- An auth-refresh retry storm that read as **"0 Errors"** on the dashboard, because the headline
+  error count includes only 5xx and uncaught exceptions — never 4xx.
+
+The dashboard's job is to make that class of failure *visible by default*. It is an internal tool
+for one to three people, not a product surface. Optimise for "answers a question in ten seconds",
+not for looking impressive.
+
+---
+
+## 2. Architecture
+
+**Recommendation: a separate Worker, with the backend owning all privileged logic.**
+
+```
+   Browser ──► Cloudflare Access (SSO gate)
+                      │
+                      ▼
+             ops.rad-fm.com  (new Worker: radfm-ops)
+             ├── static assets — React SPA
+             └── BFF routes   — /api/cf/*  proxy to Cloudflare APIs, holds the CF token
+                      │
+                      ▼
+             api.rad-fm.com/admin/*   (NEW routes in the existing backend)
+             └── everything touching D1, KV, R2, entitlement
+```
+
+**Why this split rather than one Worker, or a pure SPA:**
+
+- The ops Worker never holds `JWT_SECRET`, never holds Apple/Groq/Postmark keys, and cannot write
+  to D1. Its blast radius if compromised is a read-only Cloudflare token.
+- The Cloudflare API token cannot go in a browser bundle, so *something* server-side must proxy it.
+  That is the BFF's entire job.
+- Admin mutations (grant premium, delete user, purge cache) live next to the code that already
+  understands those invariants, and get the existing rate limiting and audit trail for free.
+  Reimplementing entitlement logic in a second codebase is how the two drift apart.
+
+**Do not** give the ops Worker a D1 binding "just to make dashboards easier". The moment it has one,
+it needs its own migrations, its own understanding of `premium_users` semantics, and it becomes a
+second source of truth.
+
+---
+
+## 3. RBAC
+
+### What exists today — read this before designing
+
+**There is no admin role. None.** Verified by grep across `src/`: no `role` column, no `is_admin`,
+no permission check anywhere. The two privileged mechanisms that exist are:
+
+1. **`DEV_TKN_KEY`**, checked as the `X-API-Key` header in 7 places
+   (`src/rad/services/llm/index.ts`, `src/music/index.ts`, `src/users/routes/auth.ts`,
+   `src/rad/services/llm/listener.ts`). One shared static string. It gates prompt debug output,
+   forced re-auth, and segment forcing. It is not tied to a user, is not rotatable without a
+   redeploy, and nothing logs who used it.
+2. **`REVIEW_ACCOUNT_EMAIL` / `REVIEW_ACCOUNT_OTP`** — the App Store reviewer account with a fixed
+   OTP. Not an admin, but it is a second credential path worth knowing about.
+
+So "reuse the existing admin" means **reuse the existing user auth** (email → OTP → JWT), because
+that is what exists. There is no admin system to reuse.
+
+### Proposed model — deliberately small
+
+Three roles, stored in D1, seeded with **user 3 (patrick.jm.quinn@gmail.com) as `owner`**:
+
+```sql
+CREATE TABLE admin_users (
+  user_id    INTEGER PRIMARY KEY REFERENCES users(id),
+  role       TEXT NOT NULL CHECK (role IN ('owner','operator','viewer')),
+  granted_by INTEGER,
+  created_at TEXT DEFAULT (CURRENT_TIMESTAMP)
+);
+INSERT INTO admin_users (user_id, role, granted_by) VALUES (3, 'owner', 3);
+```
+
+| Role | Can |
+|---|---|
+| `viewer` | Read everything: metrics, logs, user lookup, config values |
+| `operator` | Everything above, plus cache purge, re-run reconcile, resend OTP, requeue a job |
+| `owner` | Everything above, plus grant/revoke premium, delete a user, change admin roles |
+
+Rules that matter more than the table:
+
+- **Role is resolved server-side on every request**, from the JWT's `userId` against `admin_users`.
+  Never trust a role claim baked into a token — tokens outlive grants.
+- **`owner` cannot demote itself** if it is the last owner. A dashboard that can lock you out of
+  itself is a dashboard you will eventually be locked out of.
+- **Every mutation writes an audit row** — actor, action, target, before/after, timestamp.
+  `premium_audit` already does exactly this for entitlement and is the pattern to copy.
+- **Two independent gates.** Cloudflare Access in front (SSO, so a lost laptop is revoked centrally)
+  *and* the `admin_users` check in the backend. Access alone protects the UI but not the API;
+  the role check alone means a leaked JWT is full access.
+
+### Retire `DEV_TKN_KEY` as part of this
+
+Once `adminAuth()` exists, the seven `X-API-Key` checks should move behind it. Right now one leaked
+string grants prompt-debug and forced re-auth across the whole API, with no attribution. That is a
+worse credential than anything the dashboard will introduce, and the dashboard is the natural moment
+to kill it.
+
+---
+
+## 4. Cloudflare APIs available
+
+All verified against current docs. Base: `https://api.cloudflare.com/client/v4`.
+Account ID: `49b85a65aa7b9cd658945400b972d2b7`.
+
+| Need | API | Endpoint | Token permission |
+|---|---|---|---|
+| Logs, error/warning search | Workers Observability | `POST /accounts/{acct}/workers/observability/telemetry/query` | Workers Observability : Read |
+| Custom metrics (recs, DJ, upstream) | Analytics Engine SQL | `POST /accounts/{acct}/analytics_engine/sql` | Account Analytics : Read |
+| Requests, errors, CPU/wall p50–p99 | GraphQL Analytics | `POST /graphql`, dataset `workersInvocationsAdaptive` | Account Analytics : Read |
+| Ad-hoc SQL against D1 | D1 REST | `POST /accounts/{acct}/d1/database/{id}/query` | D1 : Edit |
+| KV inspect / purge | KV REST | `/accounts/{acct}/storage/kv/namespaces/{id}/...` | Workers KV Storage : Edit |
+| Deploy history, **rollback** | Workers Scripts | `/accounts/{acct}/workers/scripts/{name}/versions` | Workers Scripts : Edit |
+| Artwork objects | R2 | S3-compatible API on `rad-fm-station-art` | Workers R2 Storage : Read |
+
+Caveats worth knowing before you design around them:
+
+- **Observability retains 3 days.** Anything you want beyond that must be copied into Analytics
+  Engine or D1. This is the single biggest argument for the dashboard doing its own rollups.
+- **The D1 REST API is rate-limited by the global Cloudflare API limit**, and Cloudflare's own docs
+  say it is "best suited for administrative use". Fine for a dashboard; do not build a polling loop
+  on it.
+- **Rollback is limited to the 100 most recent versions**, and rolling back across a secret change
+  requires `?force=true`.
+- GraphQL analytics: up to one month per query, for dates up to three months old.
+
+---
+
+## 5. Data sources and what to show
+
+### Analytics Engine — already instrumented, use this first
+
+`src/lib/analytics.ts` is live and wired into the real code paths. Dataset `rad_fm_events`,
+binding `ANALYTICS`. Three event types already emitting:
+
+- `trackRecommendations` — source, timeOfDay, scene, poolSource, trackCount, poolSize, processingMs,
+  meanEnergy, maxSwing, targetEnergy, degraded
+- `trackDjLine` — style, textLength, llmMs, **degeneracyReason**, regenerated, fellBack
+- `trackUpstream` — provider, model, outcome, attempts, latencyMs
+
+This is the highest-value source in the system and nothing reads it yet. `degeneracyReason` alone
+answers "is the DJ getting worse?" — a question currently answered by listening to the radio.
+
+> **Blob and double slots are positional and Analytics Engine has no schema.** The field order in
+> `src/lib/analytics.ts` is a contract. Append only; never reorder or repurpose a slot, or every
+> historical row silently changes meaning. Put this in the dashboard's query layer as a comment too.
+
+**Day-one task:** confirm data is actually landing. I could not verify this — it needs an API token
+that does not exist yet. Run `SHOW TABLES`, then
+`SELECT count() FROM rad_fm_events WHERE timestamp > now() - INTERVAL '1' DAY`.
+
+### D1 — see `queries/d1.sql`
+
+Live counts as of 5 Aug 2026: **631 users, 18 premium, 341 stations (all user-generated),
+34,870 past plays, 4,507 liked songs, 13 new users in 7 days, DAU 15 / WAU 44.**
+
+Read `FINDINGS.md` before writing any query involving play history. `past_plays.played_at` is
+**NULL on all 34,870 rows** and the table stores current state, not history.
+
+### Observability — the 4xx blind spot
+
+The single most important panel in the whole dashboard: **4xx by route and status, over time.**
+The headline "Errors" metric on Cloudflare's own dashboard excludes 4xx entirely, which is how a
+total auth outage displayed as "0 Errors". Any ops tool for this system that does not surface 4xx
+prominently has reproduced the bug it exists to prevent.
+
+Second: **warning volume by normalised message.** Group by message with numbers and hex stripped —
+`scripts/logs.ts` in the backend repo already implements exactly this grouping and is worth reading
+before reimplementing it.
+
+---
+
+## 6. Config: what is set by hand today
+
+This is the "stop editing constants and redeploying" section. Three tiers, and they should be
+treated differently.
+
+### Tier 1 — safe to make editable at runtime (KV-backed, with an audit row)
+
+| Value | Location | Today |
+|---|---|---|
+| `FREE_DAILY_SPEAK` = 100, `PREMIUM_DAILY_SPEAK` = 1000 | `src/lib/entitlement/index.ts:34` | redeploy |
+| `PREMIUM_TTL_S` = 300 | `src/lib/entitlement/index.ts:22` | redeploy |
+| `MAX_OTP_ATTEMPTS` = 5, `OTP_TTL_MS` = 10min | `src/users/services/auth/index.ts:125` | redeploy |
+| `MAX_ENRICH` = 25, `CONCURRENCY` = 6, subrequest budget 600 | `src/events/**` | redeploy |
+| `TRANSITION_MIN_WORDS` / `GREETING_MIN_WORDS` = 24 | `src/rad/constants/index.ts:164` | redeploy |
+| Rate limit 100 req / 60s | `wrangler.jsonc` unsafe binding | redeploy |
+| IP denylist `deny:ip:<ip>` | `RATE_LIMIT_KV` | manual KV edit |
+
+### Tier 2 — expose read-only, edit via PR
+
+The recommendation weights (`W_ENERGY` 0.28, `W_VALENCE` 0.18, `W_ACOUSTIC` 0.17, `W_TEMPO` 0.17,
+`W_HARMONIC` 0.20 in `PlaylistOptimizer.ts`), `MAX_PER_ARTIST`, `MIN_ARTIST_SEPARATION`,
+`POP_ANTHEM_PCT`. These interact — they are a tuned system, not independent dials, and the weights
+are meant to sum sensibly. A dashboard slider here produces confident nonsense. Show the current
+values next to the outcome metrics so you can *see* the effect of a change; make the change in code.
+
+### Tier 3 — never expose
+
+Prompt pools and exemplars (`src/rad/constants/golden.ts`, `src/rad/services/llm/station.ts`).
+These are version-controlled creative assets with a test suite asserting their properties. Editing
+them through a web form loses review, loses history, and loses the tests.
+
+**Suggested mechanism for Tier 1:** a single `config:<key>` KV namespace read through a helper with
+a hard-coded default, so a missing or malformed KV value falls back to today's constant rather than
+to zero. Cache with a short TTL. The default must live in code — a config system that fails to an
+empty value is worse than no config system.
+
+---
+
+## 7. Recommended stack
+
+Chosen for a two-person internal tool that must be cheap to maintain, not for maximum capability.
+
+| Layer | Pick | Why |
+|---|---|---|
+| Runtime | **Cloudflare Workers + Static Assets** | Same platform, same deploy story, Access integrates natively |
+| Build | **Vite + `@cloudflare/vite-plugin`** | Runs the Worker in `workerd` locally, so dev matches prod |
+| BFF | **Hono** | Same framework as the backend — one mental model, and the team already knows it |
+| UI kit | **shadcn/ui** | Copy-in components, no lock-in, matches how the backend is written |
+| Charts | **Tremor** | Purpose-built for analytics dashboards, pairs with shadcn, Vercel-backed |
+| Tables | **TanStack Table** | Headless; the user/station browsers need sorting and filtering over a few hundred rows |
+| Data fetching | **TanStack Query** | Polling, cache invalidation and stale-while-revalidate for free |
+| Auth | **Cloudflare Access** + backend role check | Two gates, no password handling of our own |
+
+Deliberately **not** recommending Grafana or Retool: both mean another system to run and pay for,
+and neither can express the domain checks that make this dashboard worth building (entitlement
+drift, DJ degeneracy rate, setlist fill rate). Start with a single Worker; revisit only if the ops
+team grows past a handful of people.
+
+---
+
+## 8. Secrets
+
+See `.dev.vars.example` for the full annotated list.
+
+**I have deliberately not copied any live secret values into this repo.** Two reasons, and I would
+push back if asked again:
+
+1. The ops dashboard should not reuse the backend's credentials. Its Cloudflare token should be a
+   **new, scoped, mostly read-only** one — that way a compromise of an internal tool cannot rewrite
+   DNS or deploy Workers. Copying the existing token across throws that away.
+2. It should never hold `JWT_SECRET`, `OPENAI_API_KEY`, `APPLE_MUSIC_DEV_TOKEN`, `POSTMARK_TOKEN`
+   or `GROQ_API_KEY`. Under the architecture in §2 it has no use for any of them, and every one
+   copied in is a new place to leak from.
+
+There is also live history here: a `.dev.vars.bak` containing production secrets was committed to
+the backend repo, and the decision was taken not to rotate. That is exactly the failure mode worth
+not repeating in a fresh repo — so `.gitignore` ships with `.dev.vars*` on day zero.
+
+**Patrick — you need to create one thing before the team can start:** a Cloudflare API token with
+the permissions listed in `.dev.vars.example` §1. Everything else in this build is derivable from
+what is already in the backend repo.
+
+---
+
+## 9. Build phases
+
+Sequenced so each phase is independently useful and the risky part comes after the cheap wins.
+
+**Phase 0 — foundations.** Scaffold the Worker, wire Cloudflare Access, add `admin_users` + seed
+user 3, add `adminAuth()` to the backend, add the audit table. No UI beyond "you are logged in as
+owner". *This is the only phase with security-relevant decisions in it — get it reviewed.*
+
+**Phase 1 — read-only health.** Requests / errors / CPU from GraphQL, **4xx by route** from
+Observability, grouped warnings, deploy history. Delivers most of the value; touches nothing.
+
+**Phase 2 — domain panels.** Analytics Engine: DJ degeneracy rate by reason, recommendation pool
+sizes and degraded rate, upstream provider latency and failures. Plus setlist fill rate — the
+metric that would have caught the 1,094-warning bug on day one.
+
+**Phase 3 — user operations.** User lookup, entitlement state with RevenueCat cross-check, station
+browser. Read-only first; mutations last and `owner`-only.
+
+**Phase 4 — runtime config.** Tier 1 only, KV-backed, audited, with code-side defaults.
+
+Deliberately last: anything that writes. The dashboard earns trust by being right about reads
+before it is allowed to change anything.
+
+---
+
+## 10. Gotchas found the hard way
+
+- **D1 rejects `too many terms in compound SELECT`.** A stats query stacking `UNION ALL` counts
+  across ~10 tables fails with `SQLITE_ERROR 7500`. Run them as separate queries or use
+  `d1.batch()`. Hit while writing `queries/d1.sql`.
+- **D1 `bind()` accepts only null, number, string and ArrayBuffer.** Not booleans, not `undefined`.
+  Passing a boolean throws at runtime; `JSON.stringify(undefined)` returns `undefined`, not
+  `"undefined"`. This has already caused a production 500 in `saveStation`.
+- **The wrangler OAuth token does not work against `api.cloudflare.com/client/v4`.** It returns
+  `10000 Authentication error` regardless of freshness. You need a real API token. This wastes an
+  hour if you do not know it.
+- **`workers_dev: true`** means `rad-fm-backend.veme.workers.dev` is publicly reachable and bypasses
+  any custom-domain protection. Worth deciding whether that stays true for the ops Worker — it
+  should not.
+- **Observability retains 3 days**, so any trend longer than that must be rolled up and stored.
+- **Analytics Engine writes are fire-and-forget** — no acknowledgement, no await. Absence of a
+  datapoint is not proof an event did not happen.

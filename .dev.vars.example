@@ -1,0 +1,93 @@
+# Rad.FM Ops — secrets and configuration
+#
+# Copy to `.dev.vars` for local dev. `.dev.vars` is gitignored and must stay that way.
+# For production:  bunx wrangler secret put <KEY>
+#
+# ┌─ NO LIVE VALUES ARE COMMITTED HERE, AND THAT IS DELIBERATE ─────────────────────────────────┐
+# │ This file lists what is needed and where to get it. It never contains real credentials.     │
+# │ A `.dev.vars.bak` full of production secrets was once committed to the backend repo; that   │
+# │ is the mistake this file exists to not repeat.                                              │
+# └─────────────────────────────────────────────────────────────────────────────────────────────┘
+
+
+# =================================================================================================
+# 1. CLOUDFLARE API TOKEN  — the one thing Patrick must create before work can start
+# =================================================================================================
+#
+# Create at: dash.cloudflare.com -> My Profile -> API Tokens -> Create Token -> Custom Token
+#
+# Make a NEW token scoped to this dashboard. Do not reuse the backend's token, and do not use a
+# Global API Key. If this internal tool is ever compromised, the blast radius should be "read some
+# analytics", not "redeploy the Worker and repoint DNS".
+#
+#   REQUIRED (read-only — Phases 1 and 2):
+#     Account : Workers Observability : Read      logs, errors, the 4xx blind spot
+#     Account : Account Analytics     : Read      Analytics Engine SQL + GraphQL metrics
+#     Account : Workers Scripts       : Read      deploy history
+#
+#   ADD LATER, ONLY IF THE DASHBOARD NEEDS TO ACT (Phase 3+):
+#     Account : D1                    : Edit      ad-hoc SQL. Prefer routing through the backend.
+#     Account : Workers KV Storage    : Edit      cache purge, IP denylist
+#     Account : Workers R2 Storage    : Read      station artwork
+#     Account : Workers Scripts       : Edit      ROLLBACK. Grant only when someone will use it.
+#
+# Two things that will otherwise waste an afternoon:
+#   - The wrangler OAuth token in ~/.wrangler/ does NOT work against api.cloudflare.com/client/v4.
+#     It returns `10000 Authentication error` no matter how fresh it is. You need a real API token.
+#   - Start read-only. Adding a permission later is one click; discovering the dashboard could drop
+#     a table is not.
+#
+CLOUDFLARE_API_TOKEN=
+
+# Not secret — the account every API call is scoped to. Safe to hard-code; here for convenience.
+CLOUDFLARE_ACCOUNT_ID=49b85a65aa7b9cd658945400b972d2b7
+
+
+# =================================================================================================
+# 2. BACKEND
+# =================================================================================================
+#
+# All privileged reads and every mutation go through the existing backend's /admin/* routes rather
+# than being reimplemented here. See README.md §2.
+#
+RADFM_API_BASE=https://api.rad-fm.com
+
+# Local dev against a local backend:
+# RADFM_API_BASE=http://localhost:8787
+
+
+# =================================================================================================
+# 3. CLOUDFLARE ACCESS  — the SSO gate in front of the dashboard
+# =================================================================================================
+#
+# Access injects a signed JWT as the `cf-access-jwt-assertion` header. Verify it against the remote
+# JWKS at https://<team>.cloudflareaccess.com/cdn-cgi/access/certs — the `jose` library handles this
+# in a few lines. Neither value below is a secret; both are identifiers.
+#
+# Verifying is not optional. Access protects the UI route, but anything that can reach the Worker
+# directly bypasses it unless the origin checks the assertion itself.
+#
+CF_ACCESS_TEAM_DOMAIN=          # e.g. radfm.cloudflareaccess.com
+CF_ACCESS_AUD=                  # Application Audience tag, from the Access app settings
+
+
+# =================================================================================================
+# 4. WHAT THIS WORKER MUST NEVER HOLD
+# =================================================================================================
+#
+# Under the architecture in README.md §2 the ops dashboard has no use for any of these. Every one
+# copied in is a new place to leak from, in a tool that by design has broad read access.
+#
+#   JWT_SECRET              Admin identity is resolved by the BACKEND from the user's existing JWT.
+#                           If the dashboard could mint tokens, an ops-tool compromise would become
+#                           an auth compromise for every user.
+#   OPENAI_API_KEY          Artwork generation. Backend only.
+#   GROQ_API_KEY            DJ text. Backend only.
+#   APPLE_MUSIC_DEV_TOKEN   Music proxy. Backend only.
+#   POSTMARK_TOKEN          Transactional email — i.e. the ability to send mail as Rad.FM.
+#   RC_WEB_API_KEY          RevenueCat. Entitlement checks go through the backend so they stay
+#                           consistent with the live-confirmation logic that fixed the stale-cache
+#                           incident.
+#   DEV_TKN_KEY             The legacy shared admin key. Should be RETIRED as part of this project,
+#                           not propagated into a second repo. See README.md §3.
+#   REVIEW_ACCOUNT_OTP      App Store reviewer fixed OTP.
