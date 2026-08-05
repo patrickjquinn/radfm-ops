@@ -1,13 +1,13 @@
 # Rad.FM Ops Dashboard — build spec
 
-Build spec for the ops dashboard.
+Build spec for the ops dashboard, and the dashboard itself.
 
-**The dashboard itself is not built — that is your job.** But the backend half of Phase 0 *is* built
-and deployed: admin RBAC, an audit trail, and four read-only `/admin/*` endpoints. Two of the three
-blocking findings from the research have been fixed in the backend. §3a is the contract you code
-against; `FINDINGS.md` records what was wrong and what is now fixed.
+**The dashboard is now built** — every view from the design plus a Stations browser, a Worker BFF,
+and Cloudflare Access verification. The backend half of Phase 0 was already built and deployed: admin RBAC, an
+audit trail, and four read-only `/admin/*` endpoints. §3a is the contract the client codes against;
+`FINDINGS.md` records what was wrong and what is now fixed.
 
-Everything here was checked against the live system on 5 August 2026 — live D1, live
+Everything in the spec sections was checked against the live system on 5 August 2026 — live D1, live
 `wrangler.jsonc`, live source. Where a claim is inferred rather than verified, it says so.
 
 | File | What it is |
@@ -15,8 +15,35 @@ Everything here was checked against the live system on 5 August 2026 — live D1
 | `README.md` | This — architecture, RBAC, build phases |
 | `FINDINGS.md` | What the live system actually looks like today, including three problems to fix first |
 | `RUNBOOK.md` | **Start here on day one** — setup steps, health checks, known time-wasters |
+| `SECURITY-REVIEW.md` | Red-team of the admin surface, run against production. **§5 is a finding in the ops Worker itself** |
 | `queries/d1.sql` | Ops queries, run against live D1 and annotated with real numbers |
 | `.dev.vars.example` | Every secret and token needed, with provenance |
+| `worker/` | The BFF: Access gate, Cloudflare API named queries, `/admin/*` proxy |
+| `src/` | The React SPA — `views/` is one file per view, `lib/health.ts` derives the verdict |
+| `docs/BACKEND-HANDOVER.md` | The four `/admin/*` routes still needed, with contracts and SQL |
+
+## Running it
+
+```bash
+npm install
+cp .dev.vars.example .dev.vars    # fill in CLOUDFLARE_API_TOKEN
+npm run dev                       # workerd locally, so dev matches prod
+```
+
+Without a Cloudflare API token every panel renders **"unavailable"** with the reason — that is
+correct behaviour, not a broken build, and it is the state the tool ships in until the token in
+`RUNBOOK.md` §0.2 exists. To review the design with data in it:
+
+- `http://localhost:5173/?demo=healthy`
+- `http://localhost:5173/?demo=incident`
+
+Demo mode is opt-in via the URL, banners itself on every page, and is **never** a fallback when a
+live source fails. A dashboard that quietly shows fixtures when it cannot reach the real thing is
+worse than one that shows nothing.
+
+Deploy: `wrangler secret put CLOUDFLARE_API_TOKEN`, set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in
+`wrangler.jsonc`, then `npm run deploy`. **Until `ACCESS_AUD` is set, the Worker runs its dev bypass
+and `/api/*` is unauthenticated** — configure Access before the Worker is reachable.
 
 ---
 
@@ -149,6 +176,28 @@ All under `https://api.rad-fm.com`, all gated by `adminAuth('viewer')`, all read
 | `GET /admin/stats` | Headline counters + `dataQuality.pastPlaysMissingPlayedAt` |
 | `GET /admin/audit?limit=50` | Recent admin actions, newest first |
 | `GET /admin/users/:id/entitlement` | User, local premium row, `premium_meta`, and last 20 `premium_audit` rows |
+| `GET /admin/users/lookup?q=` | `{matches:[…]}` — id / email / RevenueCat subscriber id, branch decided server-side |
+| `GET /admin/stations?limit=&offset=&q=` | `{stations:[…], total}` — `subscribers: 0` is an orphan |
+| `GET /admin/metrics/setlists?hours=` | `{fillRate, sampled, filled, cities, source, truncated}` |
+| `GET /admin/config` | `{values:[…]}` with `source`, `default`, `min`, `max`, `location`, `help` |
+| `PUT /admin/config/:key` | **operator only.** Body `{"value":"400"}`; returns the updated entry |
+
+All four handover routes are live. Notes that differ from the requested contract, or that the UI
+needs to account for:
+
+- **`/admin/metrics/setlists` returns `cities` and `truncated`; `windowHours` is echoed but cannot
+  widen the window.** It is a snapshot of what `GIG_CACHE` currently holds (6h TTL), not a time
+  series — the field is named `source: "gig_cache_snapshot"` so the panel cannot imply otherwise. The
+  durable trend is the new Analytics Engine `setlist` event, which the dashboard should query
+  directly with its own token. Production currently reads **0.7806** across 9 cities / 620 events.
+- **`/admin/config` entries carry `min`, `max` and `help`.** Use them for client-side hints, but the
+  server validates regardless — `detail` on a 400 is written for an operator to act on.
+- **A config change takes up to 30 seconds to be globally visible.** `cfg()` memoises per isolate; the
+  writing isolate resets immediately, so the dashboard shows the new value at once while other
+  isolates serve the old one briefly. **Say so in the UI**, or someone will change a dial during an
+  incident and conclude the backend ignored them.
+- **Rate limiting on `/admin/*` denies with 404**, same as "not an admin", to keep the no-oracle
+  property. If pages start 404ing for someone who was working a minute ago, suspect the limiter.
 
 Auth is the user's existing JWT as `Authorization: Bearer <token>`. There is no separate admin
 login — that is what "reuse the existing admin" resolved to.
@@ -338,26 +387,44 @@ what is already in the backend repo.
 
 Sequenced so each phase is independently useful and the risky part comes after the cheap wins.
 
-**Phase 0 — foundations.** ✅ **The backend half is DONE and deployed** — `admin_users`,
-`admin_audit`, `adminAuth()`, the audit helper and four read-only `/admin/*` routes, with 24 tests
-covering forged, expired, refresh-as-bearer, smuggled-role and missing-table cases. See §3a.
-*Still to do here:* scaffold the ops Worker, wire Cloudflare Access, and verify the Access JWT
-against the JWKS. That remains the security-relevant part — get it reviewed.
+**Phase 0 — foundations.** ✅ **Done.** Backend: `admin_users`, `admin_audit`, `adminAuth()`, the
+audit helper and four read-only `/admin/*` routes, with 24 tests covering forged, expired,
+refresh-as-bearer, smuggled-role and missing-table cases. See §3a. Ops Worker: scaffolded, with
+Access JWT verification against the team JWKS in `worker/access.ts`. **That file is the
+security-relevant part of the build and has not been reviewed by anyone but its author — get it
+reviewed.** It pins RS256, checks `aud` and `exp`, and fails closed, but it is hand-rolled crypto
+glue and deserves a second pair of eyes.
 
-**Phase 1 — read-only health.** Requests / errors / CPU from GraphQL, **4xx by route** from
-Observability, grouped warnings, deploy history. Delivers most of the value; touches nothing.
+**Phase 1 — read-only health.** ✅ **Built.** Requests / errors / CPU from GraphQL, **4xx by route**
+from Observability, grouped warnings, deploy history. *Unverified:* none of these queries has ever
+run against the real APIs, because the token does not exist yet. The Observability telemetry query
+body in particular is written to the documented shape and will probably need adjusting on first
+contact — the response parsing is defensive, so a shape mismatch surfaces as "unavailable" rather
+than a wrong number.
 
-**Phase 2 — domain panels.** Analytics Engine: DJ degeneracy rate by reason, recommendation pool
-sizes and degraded rate, upstream provider latency and failures. Plus setlist fill rate — the
-metric that would have caught the 1,094-warning bug on day one.
+**Phase 2 — domain panels.** ✅ **Built**, same caveat, plus one specific to it: only the `recs` and
+`dj` Analytics Engine slot mappings are confirmed (RUNBOOK validates them). The `upstream` mapping
+is read from source and never checked against real rows, so the Rad view labels that table as
+unconfirmed rather than presenting it as fact. Setlist fill rate is **not** built — it needs a
+backend metric that does not exist yet.
 
-**Phase 3 — user operations.** User lookup, entitlement state with RevenueCat cross-check, station
-browser. Read-only first; mutations last and `owner`-only.
+**Phase 3 — user operations.** ✅ **Built.** Entitlement with the local row and RevenueCat side by
+side, lookup by user id / email / RevenueCat id, and the Stations browser. The RevenueCat side
+renders "unavailable" rather than "no subscription" when the backend does not return it.
 
-**Phase 4 — runtime config.** Tier 1 only, KV-backed, audited, with code-side defaults.
+**Phase 4 — runtime config.** ✅ **Built**, capability-gated. The Config view shows each Tier 1 value
+with whether it came from KV or from the constant in code, and the inline editor enables only when
+the backend serves `/admin/config` *and* the caller is `operator`. Until then it is the design's
+disabled control, with the reason in its `title`.
 
-Deliberately last: anything that writes. The dashboard earns trust by being right about reads
-before it is allowed to change anything.
+**Waiting on the backend.** Four routes — `users/lookup`, `stations`, `metrics/setlists`,
+`config` — are specified in `docs/BACKEND-HANDOVER.md` and are not implemented in `rad-fm-backend`
+yet. The client for each is written and wired, so shipping a route lights up its panel with no
+frontend change. Until then those panels say which route is missing rather than showing nothing.
+
+Deliberately last: anything that writes. The dashboard earns trust by being right about reads before
+it is allowed to change anything. `worker/backend.ts` rejects non-GET methods as well as the UI
+omitting the controls, so enabling the first mutation is a deliberate act in two places.
 
 ---
 

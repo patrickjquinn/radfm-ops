@@ -1,0 +1,85 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #0a0c0d;
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+::selection {
+  background: rgba(63, 179, 166, 0.3);
+}
+a {
+  color: #3fb3a6;
+  text-decoration: none;
+}
+a:hover {
+  color: #7bcfc5;
+}
+
+/* Motion means state, never decoration: the dot pulses because something is live. */
+@keyframes opsPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.13);
+  border-radius: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/*
+ * The handoff listed focus rings as the prototype's one accessibility gap: it
+ * relied on hover, which is a real problem for a keyboard-driven tool someone
+ * uses at 3am. Every interactive element gets a visible ring here.
+ */
+:focus-visible {
+  outline: 2px solid #3fb3a6;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+button {
+  font: inherit;
+  color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 900px) {
+  [data-shell] {
+    grid-template-columns: 1fr !important;
+  }
+  [data-side] {
+    position: static !important;
+    height: auto !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  }
+  [data-nav] {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 2px !important;
+  }
+  [data-navgroup] {
+    display: none !important;
+  }
+}

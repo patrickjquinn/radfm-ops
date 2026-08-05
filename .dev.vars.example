@@ -39,36 +39,44 @@
 #
 CLOUDFLARE_API_TOKEN=
 
-# Not secret — the account every API call is scoped to. Safe to hard-code; here for convenience.
-CLOUDFLARE_ACCOUNT_ID=49b85a65aa7b9cd658945400b972d2b7
+
+# =================================================================================================
+# 2. BACKEND JWT  — LOCAL DEV ONLY
+# =================================================================================================
+#
+# There is no separate admin login: "reuse the existing admin" resolved to reusing the existing user
+# auth, so the dashboard carries the OPERATOR'S OWN Rad.FM JWT rather than holding a credential of
+# its own. In the browser that token is pasted into the sidebar and lives in sessionStorage, so it
+# dies with the tab.
+#
+# This variable is the local-dev convenience only: it lets you exercise /admin/* without pasting a
+# token on every reload. Do NOT set it as a production secret — that would give every Access user
+# the rights of whoever's token it is, which is exactly the attribution problem DEV_TKN_KEY has.
+#
+DEV_BACKEND_JWT=
 
 
 # =================================================================================================
-# 2. BACKEND
+# 3. NON-SECRET CONFIG  — lives in wrangler.jsonc, not here
 # =================================================================================================
 #
-# All privileged reads and every mutation go through the existing backend's /admin/* routes rather
-# than being reimplemented here. See README.md §2.
+# These are identifiers, not credentials, so they are committed in `wrangler.jsonc` under `vars`
+# where they are reviewable:
 #
-RADFM_API_BASE=https://api.rad-fm.com
-
-# Local dev against a local backend:
-# RADFM_API_BASE=http://localhost:8787
-
-
-# =================================================================================================
-# 3. CLOUDFLARE ACCESS  — the SSO gate in front of the dashboard
-# =================================================================================================
+#   CF_ACCOUNT_ID        49b85a65aa7b9cd658945400b972d2b7
+#   BACKEND_ORIGIN       https://api.rad-fm.com
+#   BACKEND_SCRIPT_NAME  rad-fm-backend   (the script Observability and GraphQL are queried for)
+#   ACCESS_TEAM_DOMAIN   e.g. radfm.cloudflareaccess.com
+#   ACCESS_AUD           Application Audience tag, from the Access app settings
 #
-# Access injects a signed JWT as the `cf-access-jwt-assertion` header. Verify it against the remote
-# JWKS at https://<team>.cloudflareaccess.com/cdn-cgi/access/certs — the `jose` library handles this
-# in a few lines. Neither value below is a secret; both are identifiers.
+# Access injects a signed JWT as the `cf-access-jwt-assertion` header, verified in worker/access.ts
+# against the team JWKS. Verifying is not optional: Access protects the UI route, but anything that
+# can reach the Worker directly bypasses it unless the origin checks the assertion itself.
 #
-# Verifying is not optional. Access protects the UI route, but anything that can reach the Worker
-# directly bypasses it unless the origin checks the assertion itself.
-#
-CF_ACCESS_TEAM_DOMAIN=          # e.g. radfm.cloudflareaccess.com
-CF_ACCESS_AUD=                  # Application Audience tag, from the Access app settings
+# NOTE: while ACCESS_AUD is still the REPLACE_WITH_APPLICATION_AUD placeholder, the Worker runs its
+# local-dev bypass and every /api route is UNAUTHENTICATED. That is keyed on the placeholder rather
+# than on NODE_ENV so that configuring Access closes it automatically — but it does mean an
+# half-configured deploy is an open one. Set both values before the Worker is reachable.
 
 
 # =================================================================================================

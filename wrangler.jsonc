@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "radfm-ops",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-05",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Deliberately false. The backend has workers_dev:true, which means
+  // rad-fm-backend.veme.workers.dev is publicly reachable and bypasses any
+  // protection on the custom domain. Do not repeat that here — a *.workers.dev
+  // URL is not covered by the Access policy on ops.rad-fm.com.
+  "workers_dev": false,
+
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  "routes": [{ "pattern": "ops.rad-fm.com", "custom_domain": true }],
+
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+
+  "vars": {
+    "CF_ACCOUNT_ID": "49b85a65aa7b9cd658945400b972d2b7",
+    "BACKEND_ORIGIN": "https://api.rad-fm.com",
+    "BACKEND_SCRIPT_NAME": "rad-fm-backend",
+    "ACCESS_TEAM_DOMAIN": "REPLACE.cloudflareaccess.com",
+    "ACCESS_AUD": "REPLACE_WITH_APPLICATION_AUD"
+  }
+
+  // NO d1_databases binding. This is deliberate and load-bearing.
+  //
+  // The moment this Worker can read D1 directly it needs its own migrations, its
+  // own understanding of premium_users semantics, and it becomes a second source
+  // of truth. Every D1 read goes through api.rad-fm.com/admin/* so the invariants
+  // live next to the code that already understands them.
+  //
+  // Secrets (wrangler secret put):
+  //   CLOUDFLARE_API_TOKEN  — scoped, mostly read-only. See .dev.vars.example.
+  //
+  // Never add: JWT_SECRET, OPENAI_API_KEY, APPLE_MUSIC_DEV_TOKEN, POSTMARK_TOKEN,
+  // GROQ_API_KEY. Under this architecture the ops Worker has no use for any of them,
+  // and each one copied in is a new place to leak from.
+}
