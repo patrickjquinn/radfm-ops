@@ -176,7 +176,7 @@ All under `https://api.rad-fm.com`, all gated by `adminAuth('viewer')`, all read
 | `GET /admin/stats` | Headline counters + `dataQuality.pastPlaysMissingPlayedAt` |
 | `GET /admin/audit?limit=50` | Recent admin actions, newest first |
 | `GET /admin/users/:id/entitlement` | User, local premium row, `premium_meta`, and last 20 `premium_audit` rows |
-| `GET /admin/users/lookup?q=` | `{matches:[…]}` — id / email / RevenueCat subscriber id, branch decided server-side |
+| `GET /admin/users/lookup?q=` | **operator only.** `{matches:[…]}` — id / email / RevenueCat subscriber id, branch decided server-side |
 | `GET /admin/stations?limit=&offset=&q=` | `{stations:[…], total}` — `subscribers: 0` is an orphan |
 | `GET /admin/metrics/setlists?hours=` | `{fillRate, sampled, filled, cities, source, truncated}` |
 | `GET /admin/config` | `{values:[…]}` with `source`, `default`, `min`, `max`, `location`, `help` |
@@ -198,6 +198,19 @@ needs to account for:
   incident and conclude the backend ignored them.
 - **Rate limiting on `/admin/*` denies with 404**, same as "not an admin", to keep the no-oracle
   property. If pages start 404ing for someone who was working a minute ago, suspect the limiter.
+- **`/admin/users/lookup` is now `operator`, not `viewer`** (changed on request after the security
+  review). Email prefix search is a directory walk in 20-row pages — bulk access to personal data,
+  not "reading the dashboard" — and `viewer` exists so someone can watch metrics without being handed
+  the user list.
+
+  **This needs a client change.** `worker/backend.ts` passes 404 through untouched, and the UI renders
+  a 404 as *"this backend route has not been built yet"*. A `viewer` opening Users will now be told
+  the route does not exist, which is both wrong and alarming. The API deliberately will not
+  distinguish "not allowed" from "not found", so **gate the search box on `can.operate` from
+  `/admin/me`** — you already fetch it — and do not render a lookup a viewer cannot perform.
+
+  Everything else on the surface stays viewer-readable, including `/admin/users/:id/entitlement`:
+  looking up ONE user you already have an id for is support work, enumerating them all is not.
 
 Auth is the user's existing JWT as `Authorization: Bearer <token>`. There is no separate admin
 login — that is what "reuse the existing admin" resolved to.

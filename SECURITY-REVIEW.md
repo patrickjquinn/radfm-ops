@@ -7,8 +7,9 @@ the code look right".
 I wrote this code, so treat this as a self-review with the bias that implies. Everything below is
 reproducible: the attack script is described inline.
 
-**Result: 4 issues found, 4 fixed and re-verified. 1 issue found in the ops dashboard itself, which
-is yours to fix — see §5. It is the most serious item in this document.**
+**Result: 4 issues found, 4 fixed and re-verified. 1 accepted risk was subsequently closed on
+request (§4.1 — lookup raised to `operator`). 1 issue found in the ops Worker itself, which is yours
+to fix — see §5. It is the most serious item in this document.**
 
 ---
 
@@ -118,10 +119,14 @@ consistent with the 0.75 London baseline you measured.
 
 ## 4. Accepted risks — deliberate, and yours to overrule
 
-1. **`viewer` can enumerate emails.** `/admin/users/lookup` is viewer-level per your contract, and
-   prefix search over `users` means a viewer can walk the directory. Bounded at 20 rows and now rate
-   limited, and substring search is deliberately not offered. If you would rather this were
-   `operator`, it is a one-word change — say so and I will make it.
+1. ~~**`viewer` can enumerate emails.**~~ **RESOLVED — `/admin/users/lookup` is now `operator`.**
+   Prefix search over `users` is a directory walk in 20-row pages, which is bulk access to personal
+   data rather than dashboard reading. The role check runs *before* the query, so a viewer cannot
+   drive the lookup at all, not merely be denied its results — there is a test asserting no SQL is
+   issued. Still bounded at 20 rows, still rate limited, substring search still not offered.
+   `/admin/users/:id/entitlement` stays viewer-readable: resolving ONE user you already have an id
+   for is support work; enumerating the directory is not. **Requires a client change — see
+   README §3a.**
 2. **Config changes take up to 30 seconds to be globally visible.** `cfg()` memoises per isolate. The
    writing isolate resets its cache immediately, so the dashboard shows the new value at once, but
    other isolates serve the old one until their memo expires. **The UI should say this**, or an
