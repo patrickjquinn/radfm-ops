@@ -20,8 +20,9 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
     <div style={{ display: 'grid', gap: 20 }}>
       <Callout tone="amber">
         A bug that had disabled setlists for a third of all gigs lived entirely in warnings — 1,094 of them in three
-        days, none of which threw. Warnings are grouped by normalised message here, numbers and hex stripped, matching{' '}
-        <code style={{ font: `400 12px/1 ${FONT.mono}`, color: C.warnText }}>scripts/logs.ts</code>.
+        days, none of which threw. Warnings are grouped by normalised message here — numbers and hex stripped as{' '}
+        <code style={{ font: `400 12px/1 ${FONT.mono}`, color: C.warnText }}>scripts/logs.ts</code> does, and quoted
+        literals collapsed as well, so one failure mode is one row rather than one row per artist name.
       </Callout>
 
       <section>

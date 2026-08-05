@@ -132,9 +132,16 @@ consistent with the 0.75 London baseline you measured.
    other isolates serve the old one until their memo expires. **The UI should say this**, or an
    operator will change a dial during an incident, see it take effect in the dashboard, and conclude
    the backend is ignoring them.
-3. **`DEV_TKN_KEY` still works.** `isPrivilegedRequest()` accepts an admin JWT *or* the legacy key, so
-   existing tooling keeps working. It remains an unattributable shared credential. Retiring it is now
-   deleting one branch in `src/lib/auth/admin.ts` — worth doing once nothing depends on it.
+3. **`DEV_TKN_KEY` still works, and CANNOT yet be removed — I was wrong about this.** I previously
+   described it as a dev key retirable by deleting one branch. It is not: the shipped iOS binary
+   hardcodes it and sends it as `X-API-Key` to `GET /other/dev-token`, which returns the Apple Music
+   developer token. Deleting the branch would have broken every installed copy of the app.
+
+   That also makes the endpoint effectively public — a constant compiled into an IPA is recoverable
+   with `strings` — while what it hands out is the *shared* developer token whose rate limit already
+   causes 429 bursts for real listeners. It now additionally accepts a real Rad.FM JWT and is rate
+   limited per IP; once iOS ships a build using the JWT, the legacy branch goes and the shared secret
+   stops existing. `[dev-token] issued auth=legacy-key` in the logs is the signal.
 4. **String comparison on the dev key is not constant time.** Timing attacks across the public
    internet against a Workers runtime are not a realistic path to recovering it; noted rather than
    fixed.

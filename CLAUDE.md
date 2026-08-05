@@ -10,7 +10,11 @@ The backend half of Phase 0 is built and deployed in that other repo (admin RBAC
 
 Everything in the spec documents was verified against the live system on 5 August 2026 — live D1, live `wrangler.jsonc`, live source. Claims that were inferred rather than checked say so explicitly; preserve that distinction when editing them.
 
-**The dashboard has never run against real data.** The Cloudflare API token does not exist yet, so every Cloudflare-backed panel renders "unavailable". The query bodies in `worker/cf.ts` are written to the documented API shapes and have not been validated against a response. Four `/admin/*` routes the UI is wired to are also unbuilt — see `docs/BACKEND-HANDOVER.md`; those panels report `route_not_built` and name the route, which is deliberately distinct from a permissions 404.
+**Deployed to `ops.rad-fm.com` on 5 Aug 2026**, behind a Cloudflare Access application (`Rad.FM Ops`, policy `Owner only`). Zero Trust Free is active on the account. `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are real values in `wrangler.jsonc` — reverting either to the placeholder re-enables the dev bypass.
+
+**Backend state, 5 Aug 2026:** all nine `/admin/*` routes exist, including the four requested in `docs/BACKEND-HANDOVER.md`, and the scoped Cloudflare API token has been created. Every `worker/cf.ts` query has since been run against the live APIs and corrected — see § "Cloudflare API response shapes". The one path still unexercised end to end is the operator-JWT flow against the real `/admin/*` (it was verified against a stub, not production).
+
+**`/admin/users/lookup` is `operator`, not `viewer`** — email prefix search is a directory walk, so it is bulk access to personal data rather than dashboard reading. The client must not call it for a viewer; a viewer who did would get a bare 404 indistinguishable from a rate limit. See `SECURITY-REVIEW.md` §4.
 
 ## Reading order
 
@@ -19,7 +23,8 @@ Everything in the spec documents was verified against the live system on 5 Augus
 3. `FINDINGS.md` — what the live system actually looks like, including the schema traps
 4. `queries/d1.sql` — every query was run against production and is annotated with its real result
 5. `.dev.vars.example` — every secret needed, with provenance and a "must never hold" list
-6. `docs/BACKEND-HANDOVER.md` — the four `/admin/*` routes the UI is wired to but the backend does not serve yet
+6. `SECURITY-REVIEW.md` — the red-team of the admin surface, and the accepted risks the UI has to carry
+7. `docs/BACKEND-HANDOVER.md` — historical: the four routes requested on 5 Aug, all since delivered
 
 ## Commands
 
@@ -88,6 +93,10 @@ Behaviours that will read as bugs if you don't know them:
 - **`activeUsers24h`/`activeUsers7d` are not listener counts** — label them "users with play activity" (see the `past_plays` trap below).
 - **`/admin/users/:id/entitlement` degrades per field** — `meta` or `audit` can be `null` while the rest succeeds. Null ≠ "no entitlement".
 - **Role is resolved server-side per request.** Never read a role from a token; don't cache beyond a page load.
+- **A 404 has three causes and the API won't say which**: the per-IP admin rate limiter, a role below the route, or migration 0003 missing. The limiter is the likeliest when something that worked a minute ago stops. `reasonText('not_found')` says all three, in that order — don't shorten it to "unauthorised".
+- **Config writes take up to 30s to go global.** `cfg()` memoises per isolate, so the writing isolate (the one this page just read) shows the new value immediately while others serve the old one. The Config view says so after a save; removing that line makes the backend look broken during an incident.
+
+Thresholds in `src/lib/health.ts` are calibrated to measured baselines, not round numbers: the DJ guard rejects ~14% of takes when healthy, so the warn line is 25%, and there is a `MIN_SAMPLE` floor because DJ events run ~44/day and a 6h window is too small to mean anything. Re-check these if the baselines move.
 
 `adminAuth('operator')`, `adminAuth('owner')` and `auditAdminAction()` exist and are tested but no route uses them — mutations are deliberately last. The first mutation must write an audit row in the same handler.
 
@@ -104,6 +113,18 @@ These have each already cost real time or caused a real incident:
 - **Observability retains 3 days.** Longer trends must be rolled up into Analytics Engine or D1.
 - **The wrangler OAuth token does not work against `api.cloudflare.com/client/v4`** (`10000 Authentication error`, however fresh). A real scoped API token is required — creating it is the one blocking prerequisite left.
 - **Timestamps: D1 is TEXT `'YYYY-MM-DD HH:MM:SS'`; `premium_meta.premium_since` is ISO-8601 with `Z`.** Normalise before comparing.
+
+## Cloudflare API response shapes — verified live, 5 Aug 2026
+
+Every one of these was wrong when written from the docs, and each produced a plausible-looking but false panel. Do not "correct" them back toward what the documentation implies without re-checking against a real response.
+
+- **`workersInvocationsAdaptive.dimensions.status` is NOT an HTTP status code.** Live values are `success`, `clientDisconnected`, `scriptThrewException`. Parsing it as a number gave `NaN`, so the 4xx and 5xx tiles read **0 forever** — this dashboard reproducing the exact bug it exists to expose. HTTP statuses come from Observability only; `sum.errors` is the exceptions count (the platform's own headline metric).
+- **`quantiles.*` are in MICROSECONDS.** A healthy p99 rendered as `157417ms`. Wall time legitimately reaches minutes because Rad streams MP3 audio — a large wall p99 is not on its own a fault.
+- **Observability event messages live at `source.message`**, not `$workers.event.message`. Reading the latter returned empty for every event, so the warnings panel showed "no warnings" over a window that contained hundreds.
+- **Observability groups on the literal path**, so `/apple/v1/me/library/playlists/p.9oD…/tracks` is its own row. `worker/cf.ts` collapses ids to `:id` — without it the table fragments and every share percentage divides by the wrong denominator.
+- **`degeneracyReason` carries parameters**: `too-short(20w < 24)`, `wrong-track("a-ha")`. Grouped raw, one failure mode becomes six one-count rows. Stripped to the bare reason in `worker/cf.ts`.
+- **Warning normalisation collapses quoted literals** as well as numbers and hex — beyond what `scripts/logs.ts` does. The setlist lookup failure arrives once per artist name; collapsing turned dozens of 1-count rows into a single row reading **519 in 24h**, which is the whole point of the panel.
+- **Analytics Engine `n` values are strings**, and ingestion lags — a datapoint can take over a minute to be queryable, so one empty result is not proof a code path is cold.
 
 ## Editorial conventions for the docs
 

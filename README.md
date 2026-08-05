@@ -41,9 +41,25 @@ Demo mode is opt-in via the URL, banners itself on every page, and is **never** 
 live source fails. A dashboard that quietly shows fixtures when it cannot reach the real thing is
 worse than one that shows nothing.
 
-Deploy: `wrangler secret put CLOUDFLARE_API_TOKEN`, set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in
-`wrangler.jsonc`, then `npm run deploy`. **Until `ACCESS_AUD` is set, the Worker runs its dev bypass
-and `/api/*` is unauthenticated** — configure Access before the Worker is reachable.
+## Deployed
+
+**Live at `ops.rad-fm.com` since 5 August 2026.** Version `3799d514`.
+
+| | |
+|---|---|
+| Access application | `Rad.FM Ops`, self-hosted, destination `ops.rad-fm.com` |
+| Policy | `Owner only` — Emails == `patrick.jm.quinn@gmail.com` |
+| Team domain | `long-wildflower-f4fb.cloudflareaccess.com` (auto-generated) |
+| Secret | `CLOUDFLARE_API_TOKEN`, scoped read-only |
+| Zero Trust | Free plan, 50 seats |
+
+Verified after deploy: an anonymous request to `/api/session`, `/api/cf/ae/probe` and `/` all return
+**302 to the Access login** for the correct AUD. Nothing — not even the SPA shell — is served
+without authenticating.
+
+Redeploying: `npm run deploy`. **Never revert `ACCESS_AUD` to the placeholder** — that re-enables
+the local-dev bypass, and while `worker/access.ts` refuses to serve on a non-local host if it
+happens, relying on that is not the same as configuring it.
 
 ---
 
@@ -408,12 +424,12 @@ security-relevant part of the build and has not been reviewed by anyone but its 
 reviewed.** It pins RS256, checks `aud` and `exp`, and fails closed, but it is hand-rolled crypto
 glue and deserves a second pair of eyes.
 
-**Phase 1 — read-only health.** ✅ **Built.** Requests / errors / CPU from GraphQL, **4xx by route**
-from Observability, grouped warnings, deploy history. *Unverified:* none of these queries has ever
-run against the real APIs, because the token does not exist yet. The Observability telemetry query
-body in particular is written to the documented shape and will probably need adjusting on first
-contact — the response parsing is defensive, so a shape mismatch surfaces as "unavailable" rather
-than a wrong number.
+**Phase 1 — read-only health.** ✅ **Built and now validated against the live APIs.** Requests / CPU
+from GraphQL, **4xx by route** from Observability, grouped warnings, deploy history. Every query
+shape was wrong when written from the documentation, and each failure was silent rather than loud —
+see `CLAUDE.md` § "Cloudflare API response shapes". The worst: `dimensions.status` in the GraphQL
+dataset is an invocation outcome (`success`), not an HTTP code, so the 4xx and 5xx tiles read **0
+forever** — this dashboard reproducing the precise bug it exists to expose.
 
 **Phase 2 — domain panels.** ✅ **Built**, same caveat, plus one specific to it: only the `recs` and
 `dj` Analytics Engine slot mappings are confirmed (RUNBOOK validates them). The `upstream` mapping
@@ -430,10 +446,19 @@ with whether it came from KV or from the constant in code, and the inline editor
 the backend serves `/admin/config` *and* the caller is `operator`. Until then it is the design's
 disabled control, with the reason in its `title`.
 
-**Waiting on the backend.** Four routes — `users/lookup`, `stations`, `metrics/setlists`,
-`config` — are specified in `docs/BACKEND-HANDOVER.md` and are not implemented in `rad-fm-backend`
-yet. The client for each is written and wired, so shipping a route lights up its panel with no
-frontend change. Until then those panels say which route is missing rather than showing nothing.
+**Backend delivered, 5 Aug 2026.** All four requested routes shipped, plus the scoped Cloudflare
+API token. Two things changed on the way in and the client had to follow:
+
+- **`/admin/users/lookup` is `operator`, not `viewer`.** Email prefix search is a directory walk in
+  20-row pages — bulk access to personal data rather than dashboard reading. The Users view no
+  longer calls it for a viewer, and explains why instead of showing a bare 404.
+- **Config writes take up to 30s to go global.** `cfg()` memoises per isolate, so this page shows
+  the new value immediately while other isolates serve the old one. The Config view says so after a
+  save; without it an operator changes a dial mid-incident and concludes the backend ignored them.
+
+The interim "this route is not built yet" messaging has been **removed**. It inferred that from a
+404, which is now wrong: a 404 means the rate limiter, an insufficient role, or a missing migration.
+Keeping it would have misdiagnosed all three.
 
 Deliberately last: anything that writes. The dashboard earns trust by being right about reads before
 it is allowed to change anything. `worker/backend.ts` rejects non-GET methods as well as the UI

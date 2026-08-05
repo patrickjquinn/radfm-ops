@@ -24,13 +24,16 @@ export const reasonText = (reason: string, detail?: string) => {
     case 'no_backend_token':
       return 'No Rad.FM JWT. Paste an owner token below to read /admin/*.';
     case 'not_found':
-      return 'Backend returned 404. Unauthorised deliberately returns 404 rather than 403 — and every /admin/* route 404s for everyone until migration 0003 is applied.';
-    case 'route_not_built':
-      // Distinct from `not_found` on purpose. A 404 from a route that EXISTS means
-      // "you are not allowed"; a 404 from one that was never written means "the
-      // backend team has not shipped it". Same status code, different action, and
-      // an operator at 3am should not have to guess which.
-      return detail ?? 'This backend route has not been built yet. See docs/BACKEND-HANDOVER.md.';
+      // 404 on /admin/* has THREE causes and the API will not tell you which.
+      // Ordered by how likely each is to be the answer in practice — the rate
+      // limiter leads because it is the one that makes a working page start
+      // failing, which reads as a broken token and sends people down the wrong path.
+      return (
+        'Backend returned 404, which on /admin/* means one of three things and the API deliberately will not say which: ' +
+        'the per-IP admin rate limiter tripped (most likely if this was working a minute ago), ' +
+        'your role is below what the route requires, ' +
+        'or migration 0003 has not been applied.'
+      );
     case 'api_error':
     case 'bad_response':
       return detail ?? 'The upstream API returned an error.';
@@ -161,8 +164,13 @@ export const useTraffic = (hours: number) =>
     useQuery({ queryKey: ['traffic', hours], queryFn: () => cfGet(`/traffic?hours=${hours}`), ...common })
   );
 
+export type Fourxx = {
+  total: number;
+  rows: { route: string; status: string; count: number; share: string; bad: boolean }[];
+};
+
 export const useStatus4xx = (hours: number) =>
-  lift<{ hours: number; retentionHours: number; result: any }>(
+  lift<{ hours: number; retentionHours: number; rows: Fourxx }>(
     useQuery({ queryKey: ['4xx', hours], queryFn: () => cfGet(`/status4xx?hours=${hours}`), ...common })
   );
 
@@ -204,42 +212,33 @@ export const useVersions = () =>
     useQuery({ queryKey: ['versions'], queryFn: () => cfGet('/versions'), ...common })
   );
 
-/* ── surfaces the backend does not serve yet ───────────────────────────────── */
+/* ── the routes added on 5 Aug 2026 ────────────────────────────────────────── */
 
 /**
- * These four are wired to the contracts in `docs/BACKEND-HANDOVER.md`. Until the
- * routes ship they resolve to `route_not_built`, which the UI names precisely —
- * a panel that says "this route does not exist yet" is useful; one that says
- * "unavailable" or silently shows nothing is not.
- *
- * `not_built` is inferred from a 404, which is unavoidable: the backend returns
- * 404 for unauthorised as well. The distinction is made safely by only claiming
- * "not built" once `/admin/me` has succeeded — if the role resolved, a 404 on a
- * sibling route is about the route, not the caller.
+ * All four shipped. The interim "route_not_built" inference has been REMOVED
+ * deliberately: it turned a 404 into "the backend team has not written this yet",
+ * which is now wrong and actively misleading. A 404 here means rate-limited,
+ * under-privileged, or migration-missing — and misdiagnosing that is exactly the
+ * class of error this dashboard exists to prevent.
  */
-const notBuilt = (path: string) => async () => {
-  try {
-    return await backendGet(path);
-  } catch (e: any) {
-    if (e?.reason === 'not_found') {
-      throw Object.assign(new Error('route_not_built'), {
-        reason: 'route_not_built',
-        detail: `GET ${path.split('?')[0]} is not implemented on the backend yet. See docs/BACKEND-HANDOVER.md.`
-      });
-    }
-    throw e;
-  }
-};
 
 export type UserMatch = { id: number; email: string | null; username: string | null; created_at: string | null };
 
-/** Numeric ids resolve directly; email and RevenueCat ids need the lookup route. */
-export const useUserLookup = (q: string, enabled: boolean) =>
+/**
+ * Numeric ids resolve directly via the viewer-level entitlement route; email and
+ * RevenueCat ids go through lookup, which is **operator**.
+ *
+ * Prefix search over `users` is a directory walk in 20-row pages — bulk access to
+ * personal data rather than dashboard reading. The role check runs before the
+ * query server-side, so a viewer cannot drive it at all. The client must not even
+ * ask, or a viewer gets a bare 404 and no idea why.
+ */
+export const useUserLookup = (q: string, canOperate: boolean, enabled: boolean) =>
   lift<{ matches: UserMatch[] }>(
     useQuery({
       queryKey: ['lookup', q],
-      queryFn: notBuilt(`/admin/users/lookup?q=${encodeURIComponent(q)}`),
-      enabled: enabled && q.length > 2 && !/^\d+$/.test(q),
+      queryFn: () => backendGet(`/admin/users/lookup?q=${encodeURIComponent(q)}`),
+      enabled: enabled && canOperate && q.length > 2 && !/^\d+$/.test(q),
       ...common
     })
   );
@@ -258,7 +257,7 @@ export const useStations = (q: string, enabled: boolean) =>
   lift<{ stations: Station[]; total: number }>(
     useQuery({
       queryKey: ['stations', q],
-      queryFn: notBuilt(`/admin/stations?limit=100${q ? `&q=${encodeURIComponent(q)}` : ''}`),
+      queryFn: () => backendGet(`/admin/stations?limit=100${q ? `&q=${encodeURIComponent(q)}` : ''}`),
       enabled,
       ...common
     })
@@ -275,7 +274,7 @@ export const useSetlistFill = (hours: number, enabled: boolean) =>
   lift<SetlistFill>(
     useQuery({
       queryKey: ['setlists', hours],
-      queryFn: notBuilt(`/admin/metrics/setlists?hours=${hours}`),
+      queryFn: () => backendGet(`/admin/metrics/setlists?hours=${hours}`),
       enabled,
       ...common
     })
@@ -293,7 +292,7 @@ export type ConfigEntry = {
 
 export const useConfig = (enabled: boolean) =>
   lift<{ values: ConfigEntry[] }>(
-    useQuery({ queryKey: ['config'], queryFn: notBuilt('/admin/config'), enabled, ...common })
+    useQuery({ queryKey: ['config'], queryFn: () => backendGet('/admin/config'), enabled, ...common })
   );
 
 /**
@@ -313,7 +312,7 @@ export const useSetConfig = () => {
       const text = await res.text();
       const body = text ? JSON.parse(text) : null;
       if (!res.ok) {
-        const reason = res.status === 404 ? 'route_not_built' : (body?.error ?? `http_${res.status}`);
+        const reason = res.status === 404 ? 'not_found' : (body?.error ?? `http_${res.status}`);
         throw Object.assign(new Error(reason), { reason, detail: body?.detail });
       }
       return body;

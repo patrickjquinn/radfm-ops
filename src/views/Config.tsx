@@ -218,6 +218,20 @@ function Row({ entry, editable, why }: { entry: ConfigEntry; editable: boolean; 
           {reasonText((save.error as any)?.reason ?? 'error', (save.error as any)?.detail)}
         </div>
       )}
+
+      {/*
+        `cfg()` memoises per isolate. The writing isolate resets immediately, so
+        this page shows the new value at once — but other isolates serve the old
+        one until their memo expires. Without saying so, an operator changes a dial
+        during an incident, sees it take effect here, and concludes the backend is
+        ignoring them.
+      */}
+      {save.isSuccess && !editing && (
+        <div style={{ font: `400 11.5px/1.5 ${FONT.text}`, color: C.warnText, paddingTop: 8, maxWidth: '74ch' }}>
+          Saved. Up to 30s to go global — this page reads the isolate that just wrote, other isolates serve the previous
+          value until their cache expires. It is not being ignored.
+        </div>
+      )}
       {fromKv && entry.default !== entry.value && !editing && (
         <div style={{ font: `400 11px/1.5 ${FONT.mono}`, color: 'rgba(255,255,255,0.3)', paddingTop: 6 }}>
           code default {String(entry.default)} — this override is what the Worker is using

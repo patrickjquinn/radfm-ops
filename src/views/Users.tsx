@@ -15,7 +15,8 @@ export default function Users({ ctx }: { ctx: Ctx }) {
   const [userId, setUserId] = useState('3');
 
   const isNumeric = /^\d+$/.test(submitted);
-  const lookup = useUserLookup(submitted, !demo);
+  const canLookup = demo ? true : ctx.can.operate;
+  const lookup = useUserLookup(submitted, canLookup, !demo);
   const ent = useEntitlement(userId, !demo);
 
   return (
@@ -64,9 +65,34 @@ export default function Users({ ctx }: { ctx: Ctx }) {
         auto-selected: two accounts sharing an email prefix is exactly the case
         where guessing produces a support answer about the wrong person.
       */}
-      {!demo && !isNumeric && submitted.length > 2 && (
+      {/*
+        Lookup is operator-level. Prefix search over `users` is a directory walk in
+        20-row pages — bulk access to personal data rather than dashboard reading —
+        so the role check runs before the query server-side and a viewer cannot
+        drive it at all. The client must not even ask: a viewer who did would get a
+        bare 404 and no way to tell it from a rate limit or a missing migration.
+      */}
+      {!demo && !isNumeric && submitted.length > 2 && !canLookup && (
+        <div
+          style={{
+            border: '1px solid rgba(255,255,255,0.09)',
+            background: 'rgba(255,255,255,0.02)',
+            borderRadius: 8,
+            padding: '15px 17px',
+            font: `400 12.5px/1.6 ${FONT.text}`,
+            color: 'rgba(255,255,255,0.62)',
+            maxWidth: '82ch'
+          }}
+        >
+          Searching by email or RevenueCat id requires <strong style={{ fontWeight: 500, color: '#fff' }}>operator</strong>.
+          Resolving one user you already have an id for is support work; enumerating the directory is not, so that
+          search is a different permission rather than a different result. A numeric user id works at your role.
+        </div>
+      )}
+
+      {!demo && !isNumeric && submitted.length > 2 && canLookup && (
         <section>
-          <SectionHead title="Matches" meta="admin/users/lookup" />
+          <SectionHead title="Matches" meta="admin/users/lookup · operator · 20 rows max" />
           <Source data={lookup} what="User lookup">
             {(d) =>
               d.matches.length ? (

@@ -26,7 +26,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
         <StatGrid items={fx.redStats(demo)} />
       ) : (
         <Source data={traffic} what="Request metrics">
-          {(d) => <StatGrid items={summarise(d.series)} />}
+          {(d) => <StatGrid items={summarise(d.series, four.state === 'ok' ? four.data.rows.total : null)} />}
         </Source>
       )}
 
@@ -37,7 +37,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
         ) : (
           <Source data={four} what="4xx breakdown">
             {(d) => {
-              const rows = fromCalculations(d.result);
+              const rows = d.rows.rows;
               if (!rows.length)
                 return (
                   <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)' }}>
@@ -51,7 +51,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
       </section>
 
       <section>
-        <SectionHead title="Request volume" meta="GraphQL · workersInvocationsAdaptive" />
+        <SectionHead title="Request volume" meta="GraphQL · no HTTP status in this dataset" />
         {demo ? (
           <Volume bars={fx.volume(demo)} start={ctx.range === '6h' ? '03:48' : 'yesterday 09:48'} />
         ) : (
@@ -157,8 +157,8 @@ function Volume({ bars, start }: { bars: { ok: number; err: number; hot?: boolea
       </div>
       {/* Colour is paired with a label, always. Never colour alone. */}
       <div style={{ display: 'flex', gap: 18, paddingTop: 12 }}>
-        <Legend color={C.okDim} label="2xx / 3xx" />
-        <Legend color={C.warn} label="4xx" />
+        <Legend color={C.okDim} label="requests" />
+        <Legend color={C.warn} label="uncaught exceptions" />
       </div>
     </>
   );
@@ -181,65 +181,71 @@ const Legend = ({ color, label }: { color: string; label: string }) => (
 
 /* ── shaping the live responses ────────────────────────────────────────────── */
 
-function fromCalculations(result: any) {
-  const groups = result?.calculations?.[0]?.aggregates ?? result?.calculations?.[0]?.groups ?? [];
-  const rows = groups.map((g: any) => {
-    const dims: string[] = g.groups?.map((x: any) => String(x.value)) ?? [String(g.group ?? '')];
-    const status = dims.find((d) => /^\d{3}$/.test(d)) ?? '4xx';
-    const route = dims.find((d) => d.startsWith('/')) ?? dims[0] ?? '—';
-    return { route, status, count: Number(g.value ?? g.count ?? 0), bad: status === '401' || status === '429' };
-  });
-  const total = rows.reduce((a: number, b: any) => a + b.count, 0) || 1;
-  return rows
-    .sort((a: any, b: any) => b.count - a.count)
-    .slice(0, 12)
-    .map((r: any) => ({ ...r, share: `${((r.count / total) * 100).toFixed(1)}%` }));
-}
-
-function summarise(series: any[]) {
+function summarise(series: any[], fourxxTotal: number | null) {
   let requests = 0;
-  let fourxx = 0;
-  let fivexx = 0;
+  let exceptions = 0;
   let cpu = 0;
   let wall = 0;
   for (const s of series) {
-    const n = Number(s.sum?.requests ?? 0);
-    requests += n;
-    const status = Number(s.dimensions?.status ?? 0);
-    if (status >= 400 && status < 500) fourxx += n;
-    if (status >= 500) fivexx += n;
+    requests += Number(s.sum?.requests ?? 0);
+    exceptions += Number(s.sum?.errors ?? 0);
     cpu = Math.max(cpu, Number(s.quantiles?.cpuTimeP99 ?? 0));
     wall = Math.max(wall, Number(s.quantiles?.wallTimeP99 ?? 0));
   }
-  const pct = requests ? ((fourxx / requests) * 100).toFixed(2) : '0.00';
+  const pct = requests && fourxxTotal != null ? ((fourxxTotal / requests) * 100).toFixed(2) : null;
   return [
     { label: 'Requests', value: compact(requests), context: 'in window', tone: 'plain' as const },
     {
       label: '4xx',
-      value: fourxx.toLocaleString(),
-      context: `${pct}% of requests`,
-      tone: Number(pct) > 1 ? ('bad' as const) : ('plain' as const)
+      value: fourxxTotal == null ? 'unavailable' : fourxxTotal.toLocaleString(),
+      context: pct == null ? 'needs Observability' : `${pct}% of requests`,
+      tone: fourxxTotal == null ? ('warn' as const) : Number(pct) > 1 ? ('bad' as const) : ('plain' as const)
     },
     {
-      label: '5xx',
-      value: fivexx.toLocaleString(),
-      context: 'this is why 4xx leads',
-      tone: fivexx > 0 ? ('bad' as const) : ('plain' as const)
+      // This is the platform's own headline metric — 5xx and uncaught exceptions,
+      // 4xx excluded. Shown next to the real 4xx count so the gap is visible
+      // rather than something you have to already know about.
+      label: '5xx / exceptions',
+      value: exceptions.toLocaleString(),
+      context: 'the metric that excludes 4xx',
+      tone: exceptions > 0 ? ('bad' as const) : ('plain' as const)
     },
-    { label: 'CPU p99', value: `${Math.round(cpu)}ms`, context: 'worst hour in window', tone: 'plain' as const },
-    { label: 'Wall p99', value: `${Math.round(wall)}ms`, context: 'worst hour in window', tone: 'plain' as const }
+    { label: 'CPU p99', value: dur(cpu), context: 'worst hour in window', tone: 'plain' as const },
+    {
+      label: 'Wall p99',
+      value: dur(wall),
+      // Rad streams MP3 audio, so wall time legitimately runs to minutes and a
+      // large number here is not on its own a fault. Said out loud because the
+      // obvious reading — "requests are taking six minutes" — is wrong.
+      context: 'worst hour · audio streams inflate this',
+      tone: 'plain' as const
+    }
   ];
 }
 
+/** Quantiles arrive in microseconds. Rendering them raw showed a p99 as "367547ms". */
+const dur = (micros: number) => {
+  const ms = micros / 1000;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.round(ms / 60_000)}m`;
+};
+
+/**
+ * Requests per hour, with the errored portion overlaid. The overlay is uncaught
+ * exceptions, not 4xx: this dataset cannot express HTTP status, and drawing 4xx
+ * here from a field that does not contain it is how the tile bug happened. The
+ * legend says which, and the 4xx table above is the panel that answers for 4xx.
+ */
 function toBars(series: any[]) {
   const byHour = new Map<string, { ok: number; err: number }>();
   for (const s of series) {
     const h = String(s.dimensions?.datetimeHour ?? '');
     const n = Number(s.sum?.requests ?? 0);
-    const status = Number(s.dimensions?.status ?? 0);
+    const err = Number(s.sum?.errors ?? 0);
     const hit = byHour.get(h) ?? { ok: 0, err: 0 };
-    if (status >= 400) hit.err += n;
-    else hit.ok += n;
+    hit.err += err;
+    hit.ok += Math.max(0, n - err);
     byHour.set(h, hit);
   }
   return [...byHour.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);

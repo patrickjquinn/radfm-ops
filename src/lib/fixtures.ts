@@ -1,13 +1,14 @@
 /**
- * The prototype's Healthy and Incident scenarios, kept verbatim.
+ * The Healthy and Incident scenarios behind `?demo=healthy` and `?demo=incident`.
  *
- * These drive `?demo=healthy` and `?demo=incident` — nothing else. They exist for
- * two honest reasons and no others:
+ * Now that the token exists and the routes have shipped, these exist for one
+ * reason: the Incident scenario is the only way to see the failure-state layouts
+ * without waiting for a real incident.
  *
- *   1. The Cloudflare API token does not exist yet, so live mode legitimately
- *      renders "unavailable" everywhere. Reviewing the design needs data.
- *   2. The Incident scenario is the only way to see the failure-state layouts
- *      without waiting for a real incident.
+ * **Where a real baseline is known, these use it** — the DJ numbers below are the
+ * measured 86% pass rate, not the prototype's invented 94%. A demo that teaches a
+ * baseline the live system does not have is worse than no demo, because it is the
+ * screen people look at first.
  *
  * Demo mode is loud about itself — a persistent banner, never the default, never
  * a silent fallback when a live source fails. A dashboard that quietly shows
@@ -100,21 +101,28 @@ export const errors = [
   { time: '09:22:04Z', msg: 'Error: subrequest budget exceeded', route: '/events/enrich' }
 ];
 
+/**
+ * The real `degeneracyReason` vocabulary and the real volumes, measured 5 Aug
+ * 2026: 307 events over 7 days, 264 `ok` — an **86% pass rate is healthy**, not a
+ * problem. The prototype's invented 94% and its made-up reason names taught the
+ * wrong baseline and the wrong words, which is a bad thing for the only screen
+ * anyone will look at before they have seen the live one.
+ */
 export const djReasons = (s: Scenario) =>
   s === 'incident'
     ? [
-        { reason: 'ok', n: 4120, share: '82.0%' },
-        { reason: 'repetition', n: 512, share: '10.2%' },
-        { reason: 'too_short', n: 287, share: '5.7%' },
-        { reason: 'banned_phrase', n: 78, share: '1.6%' },
-        { reason: 'empty', n: 27, share: '0.5%' }
+        { reason: 'ok', n: 198, share: '64.5%' },
+        { reason: 'simile', n: 58, share: '18.9%' },
+        { reason: 'wrong-track', n: 27, share: '8.8%' },
+        { reason: 'names-nothing', n: 15, share: '4.9%' },
+        { reason: 'too-short', n: 9, share: '2.9%' }
       ]
     : [
-        { reason: 'ok', n: 4712, share: '94.1%' },
-        { reason: 'repetition', n: 174, share: '3.5%' },
-        { reason: 'too_short', n: 88, share: '1.8%' },
-        { reason: 'banned_phrase', n: 24, share: '0.5%' },
-        { reason: 'empty', n: 8, share: '0.2%' }
+        { reason: 'ok', n: 264, share: '86.0%' },
+        { reason: 'simile', n: 16, share: '5.2%' },
+        { reason: 'names-nothing', n: 8, share: '2.6%' },
+        { reason: 'too-short', n: 7, share: '2.3%' },
+        { reason: 'wrong-track', n: 12, share: '3.9%' }
       ];
 
 export const upstream = (s: Scenario) => {
@@ -186,7 +194,7 @@ export const signals = (s: Scenario) =>
     ? [
         { title: '4xx spike on /users/auth/refresh', evidence: '401 responses, sustained 42 min. Headline Errors still reads 0 — 4xx is excluded from it.', metric: '2,847', source: 'Observability', sev: 'bad' as const, go: 'traffic' as const },
         { title: 'Setlist fill rate below baseline', evidence: 'Failures log as warnings, so nothing throws and nothing alerts. This is the 1,094-warning bug’s signature.', metric: '62%', source: 'D1 · setlists', sev: 'warn' as const, go: 'logs' as const },
-        { title: 'DJ degeneracy rising', evidence: 'Non-ok share up from 6% to 18% over 24h. Guard is rejecting more takes.', metric: '18%', source: 'Analytics Engine', sev: 'warn' as const, go: 'rad' as const },
+        { title: 'DJ degeneracy rising', evidence: 'Non-ok share up from a ~14% baseline to 36% over 24h. The guard is rejecting more takes.', metric: '36%', source: 'Analytics Engine', sev: 'warn' as const, go: 'rad' as const },
         { title: 'Analytics Engine never read', evidence: 'Instrumented and writing, but no query has ever confirmed datapoints land. Needs a scoped API token.', metric: 'unverified', source: 'day-one check', sev: 'info' as const, go: 'rad' as const }
       ]
     : [

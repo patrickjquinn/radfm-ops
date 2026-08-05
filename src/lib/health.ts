@@ -24,6 +24,24 @@ import type { ViewId } from '../App';
 
 export type Badge = { text: string; kind: 'bad' | 'warn' | 'plain' };
 
+/**
+ * Thresholds, calibrated against the real baselines measured 5 Aug 2026 — not
+ * round numbers picked because they look tidy.
+ *
+ * The DJ guard rejects roughly 14% of takes when everything is working (264 `ok`
+ * of 307 over 7 days). A 10% threshold — the obvious-looking choice — would have
+ * fired permanently on a healthy system, and a dashboard that always shows a
+ * warning has trained you to ignore it by the second day.
+ *
+ * MIN_SAMPLE matters as much as the threshold. DJ events run ~44/day, so a 6h
+ * window holds barely a dozen: one bad stretch swings the percentage wildly and
+ * the number means nothing. Below the floor no claim is made either way, which is
+ * different from claiming health.
+ */
+const DJ_NONOK_WARN = 25;
+const RECS_DEGRADED_WARN = 10;
+const MIN_SAMPLE = 30;
+
 export type Signal = {
   title: string;
   evidence: string;
@@ -102,7 +120,7 @@ export function useHealth(hours: number, demo: Scenario | null): Health {
     signals.push({
       title: 'Analytics Engine returned no datapoints',
       evidence:
-        'Writes are fire-and-forget, so this is not proof the events did not happen — check the binding is deployed before assuming the code path is cold.',
+        'Ingestion lags — a datapoint can take over a minute to become queryable — and writes are fire-and-forget, so one empty query is not proof a code path is cold. Check the binding is deployed before concluding anything.',
       metric: 'unverified',
       source: 'day-one check',
       sev: 'info',
@@ -111,23 +129,23 @@ export function useHealth(hours: number, demo: Scenario | null): Health {
   }
 
   // Real findings from sources that DID answer, ranked above the unreadable ones.
-  const fourxxTotal = four.state === 'ok' ? countCalculations(four.data.result) : null;
+  const fourxxTotal = four.state === 'ok' ? four.data.rows.total : null;
   const warnTotal = warn.state === 'ok' ? (warn.data.groups ?? []).reduce((a, b) => a + b.count, 0) : null;
   const djPct = dj.state === 'ok' ? nonOkPct(dj.data.rows) : null;
   const recsPct = recs.state === 'ok' ? degradedPct(recs.data.rows) : null;
   const missingPlayedAt = stats.state === 'ok' ? stats.data.dataQuality?.pastPlaysMissingPlayedAt : undefined;
 
-  if (djPct != null && djPct >= 10)
+  if (djPct != null && djPct >= DJ_NONOK_WARN)
     signals.unshift({
       title: 'DJ degeneracy rising',
-      evidence: 'The guard is rejecting more takes. Regressions here are otherwise only detectable by listening to the radio.',
+      evidence: `Non-ok share is ${Math.round(djPct)}% against a ~14% baseline. The guard is rejecting more takes, and regressions here are otherwise only detectable by listening to the radio.`,
       metric: `${Math.round(djPct)}%`,
       source: 'Analytics Engine',
       sev: 'warn',
       go: 'rad'
     });
 
-  if (recsPct != null && recsPct >= 10)
+  if (recsPct != null && recsPct >= RECS_DEGRADED_WARN)
     signals.unshift({
       title: 'Recommendation fallback rate elevated',
       evidence: 'The orchestrator is degrading gracefully, so nothing throws and nothing alerts.',
@@ -180,8 +198,8 @@ export function useHealth(hours: number, demo: Scenario | null): Health {
     };
   if (fourxxTotal) badges.traffic = { text: compact(fourxxTotal), kind: fourxxTotal > 1000 ? 'warn' : 'plain' };
   if (warnTotal) badges.logs = { text: compact(warnTotal), kind: warnTotal > 500 ? 'warn' : 'plain' };
-  if (djPct != null && djPct >= 10) badges.rad = { text: `${Math.round(djPct)}%`, kind: 'warn' };
-  if (recsPct != null && recsPct >= 10) badges.recs = { text: `${Math.round(recsPct)}%`, kind: 'warn' };
+  if (djPct != null && djPct >= DJ_NONOK_WARN) badges.rad = { text: `${Math.round(djPct)}%`, kind: 'warn' };
+  if (recsPct != null && recsPct >= RECS_DEGRADED_WARN) badges.recs = { text: `${Math.round(recsPct)}%`, kind: 'warn' };
 
   const bad = signals.filter((s) => s.sev === 'bad').length;
   const verdict: Verdict = unreadable.length
@@ -249,7 +267,7 @@ function demoHealth(demo: Scenario): Health {
             overview: { text: '3', kind: 'bad' },
             traffic: { text: '4k', kind: 'warn' },
             logs: { text: '1.5k', kind: 'warn' },
-            rad: { text: '18%', kind: 'warn' },
+            rad: { text: '36%', kind: 'warn' },
             recs: { text: '17%', kind: 'warn' }
           }
         : {}
@@ -264,24 +282,20 @@ const reasonShort = (reason: string) =>
       : reason === 'no_backend_token'
         ? 'No Rad.FM JWT supplied, so /admin/* cannot be read.'
         : reason === 'not_found'
-          ? 'Backend returned 404 — unauthorised, or migration 0003 has not been applied.'
+          ? 'Backend returned 404 — the admin rate limiter, a role below the route, or migration 0003.'
           : 'The source returned an error.';
 
-function countCalculations(result: any) {
-  const groups = result?.calculations?.[0]?.aggregates ?? result?.calculations?.[0]?.groups ?? [];
-  return groups.reduce((a: number, g: any) => a + Number(g.value ?? g.count ?? 0), 0);
-}
-
+/** Null below MIN_SAMPLE: too few events to mean anything, which is not the same as fine. */
 function nonOkPct(rows: any[]) {
   const total = rows.reduce((a, r) => a + Number(r.n ?? 0), 0);
-  if (!total) return null;
+  if (total < MIN_SAMPLE) return null;
   const ok = Number(rows.find((r) => String(r.reason) === 'ok')?.n ?? 0);
   return ((total - ok) / total) * 100;
 }
 
 function degradedPct(rows: any[]) {
   const sets = rows.reduce((a, r) => a + Number(r.n ?? 0), 0);
-  if (!sets) return null;
+  if (sets < MIN_SAMPLE) return null;
   return (rows.reduce((a, r) => a + Number(r.degraded ?? 0), 0) / sets) * 100;
 }
 

@@ -25,8 +25,15 @@
     "CF_ACCOUNT_ID": "49b85a65aa7b9cd658945400b972d2b7",
     "BACKEND_ORIGIN": "https://api.rad-fm.com",
     "BACKEND_SCRIPT_NAME": "rad-fm-backend",
-    "ACCESS_TEAM_DOMAIN": "REPLACE.cloudflareaccess.com",
-    "ACCESS_AUD": "REPLACE_WITH_APPLICATION_AUD"
+    // Access application "Rad.FM Ops", created 5 Aug 2026. Policy "Owner only":
+    // Emails == patrick.jm.quinn@gmail.com. Both values are identifiers, not
+    // secrets, so they belong in version control where a change is reviewable.
+    //
+    // Setting a real AUD here also closes the dev bypass in worker/access.ts —
+    // that is deliberate, and it is why these two must never be reverted to the
+    // placeholder on a deployed Worker.
+    "ACCESS_TEAM_DOMAIN": "long-wildflower-f4fb.cloudflareaccess.com",
+    "ACCESS_AUD": "b01e1140660d0a36b16f6e988774ac57e1c456bac1d36cb79108cee28450fe88"
   }
 
   // NO d1_databases binding. This is deliberate and load-bearing.

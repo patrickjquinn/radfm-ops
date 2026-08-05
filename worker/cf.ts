@@ -164,8 +164,63 @@ app.get('/status4xx', async (c) => {
     view: 'calculations'
   });
   if (out.ok === false) return c.json(out);
-  return c.json({ ok: true, hours, retentionHours: RETENTION_HOURS, result: out.data?.result ?? null });
+  return c.json({
+    ok: true,
+    hours,
+    retentionHours: RETENTION_HOURS,
+    rows: fourxxRows(out.data?.result)
+  });
 });
+
+/**
+ * Collapse the raw paths into routes.
+ *
+ * Observability groups on the literal request path, so one route arrives as many
+ * rows — `/apple/v1/me/library/playlists/p.9oDKOAatN4QNJbm/tracks` is not a
+ * different problem from the same call with another playlist id. Without this the
+ * table fragments the real signal across a long tail and every share percentage
+ * is computed against the wrong denominator. Same reasoning as the warning
+ * normalisation; the design's own mock shows `/stations/art/:key`, already collapsed.
+ */
+function normalisePath(p: string): string {
+  return (
+    p
+      .replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '/:uuid')
+      .replace(/\/p\.[A-Za-z0-9]+/g, '/:id')
+      .replace(/\/\d+/g, '/:id')
+      .replace(/\/[A-Za-z0-9_-]{22,}/g, '/:id') || '/'
+  );
+}
+
+function fourxxRows(result: any) {
+  const aggregates = result?.calculations?.[0]?.aggregates ?? [];
+  const byKey = new Map<string, { route: string; status: string; count: number }>();
+
+  for (const g of aggregates) {
+    const dims: { key: string; value: any }[] = g.groups ?? [];
+    const rawPath = String(dims.find((d) => d.key?.includes('request.path'))?.value ?? '/');
+    const status = String(dims.find((d) => d.key?.includes('response.status'))?.value ?? '');
+    const route = normalisePath(rawPath);
+    const key = `${route}|${status}`;
+    const hit = byKey.get(key);
+    const n = Number(g.value ?? g.count ?? 0);
+    if (hit) hit.count += n;
+    else byKey.set(key, { route, status, count: n });
+  }
+
+  const rows = [...byKey.values()].sort((a, b) => b.count - a.count);
+  const total = rows.reduce((a, b) => a + b.count, 0);
+  return {
+    total,
+    // 401 and 429 lead the eye: those are the shapes an auth outage and a limiter
+    // storm take, and both are invisible in the platform's own error metric.
+    rows: rows.slice(0, 15).map((r) => ({
+      ...r,
+      share: total ? `${((r.count / total) * 100).toFixed(1)}%` : '—',
+      bad: r.status === '401' || r.status === '429'
+    }))
+  };
+}
 
 /**
  * Warnings grouped by normalised message — numbers and hex stripped, matching
@@ -206,17 +261,37 @@ app.get('/logs', async (c) => {
   });
 });
 
-/** Same normalisation as scripts/logs.ts: strip numbers and hex so one bug is one row. */
+/**
+ * Numbers and hex, as scripts/logs.ts does — plus quoted literals, which it does
+ * not.
+ *
+ * Verified against live warnings: the setlist lookup failure arrives as
+ * `[setlists] last.fm fallback failed for "ursula harrison quartet": ...` once per
+ * artist, so a single failure mode occupied twelve of the top twenty rows at one
+ * count each while the real story — that this is the biggest source of warnings —
+ * was invisible. That is the 1,094-warning bug's exact signature, and the panel
+ * exists to make it one row with a big number beside it.
+ */
 function normalise(msg: string) {
   return msg
+    .replace(/"[^"]*"/g, '"…"')
+    .replace(/'[^']*'/g, "'…'")
     .replace(/\b0x[0-9a-f]+\b/gi, '<hex>')
     .replace(/\b[0-9a-f]{8,}\b/gi, '<hex>')
     .replace(/\b\d+(\.\d+)?\b/g, '<n>')
     .trim();
 }
 
+/**
+ * The message lives at `source.message`, verified against a live response on
+ * 5 Aug 2026. The documented-looking `$workers.event.message` does not exist, and
+ * reading it produced an empty string for every event — so the warning panel
+ * rendered "no warnings" while the window genuinely contained them. That is the
+ * precise failure this dashboard exists to prevent, produced by the dashboard.
+ * The fallbacks are kept in case the shape shifts again.
+ */
 function messageOf(e: any): string {
-  return String(e?.$workers?.event?.message ?? e?.message ?? e?.body ?? '').slice(0, 400);
+  return String(e?.source?.message ?? e?.$workers?.event?.message ?? e?.message ?? e?.body ?? '').slice(0, 400);
 }
 
 function groupNormalised(events: any[]) {
@@ -277,8 +352,29 @@ app.get('/ae/dj', async (c) => {
      GROUP BY reason ORDER BY n DESC`
   );
   if (out.ok === false) return c.json(out);
-  return c.json({ ok: true, rows: out.data?.data ?? [] });
+  return c.json({ ok: true, rows: groupDjReasons(out.data?.data ?? []) });
 });
+
+/**
+ * `degeneracyReason` carries its parameters — the live values include
+ * `too-short(20w < 24)`, `too-short(18w < 24)`, `wrong-track("a-ha")`. Those are
+ * one failure mode each, not six, and left raw they scatter a real regression
+ * across a long tail of one-count rows while the share column divides by a
+ * meaningless denominator.
+ *
+ * Stripping the parenthetical is the same normalisation the warning panel applies
+ * to log messages, for the same reason: one failure, one row.
+ */
+function groupDjReasons(rows: any[]) {
+  const byReason = new Map<string, number>();
+  for (const r of rows) {
+    const reason = String(r.reason ?? 'ok').replace(/\s*\(.*$/, '').trim() || 'ok';
+    byReason.set(reason, (byReason.get(reason) ?? 0) + Number(r.n ?? 0));
+  }
+  return [...byReason.entries()]
+    .map(([reason, n]) => ({ reason, n }))
+    .sort((a, b) => (a.reason === 'ok' ? -1 : b.reason === 'ok' ? 1 : b.n - a.n));
+}
 
 /** Recommendation pool health by source. Degraded climbing means silent fallback. */
 app.get('/ae/recs', async (c) => {
