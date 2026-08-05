@@ -206,7 +206,22 @@ path never touches the backend at all.
 
 ### What was changed
 
-**`worker/access.ts`** — the bypass now additionally requires the request to be arriving at
+**`worker/access.ts`** — the dev bypass is now gated on `import.meta.env.DEV`, a build-time
+substitution: the production bundle compiles `isLocalDev` to a literal `return false`, so the branch
+is dead code there and cannot be reached by any request. Verified in `dist/`. A localhost check sits
+on top as belt-and-braces.
+
+That replaced an earlier version of this fix which keyed on the AUD placeholder plus localhost. It
+was correct about production but had one fatal property: **configuring Access — which you must do
+before deploying — also switched local dev off**, so every `/api` route 401'd on a developer machine
+and the dashboard could not be worked on. Confirmed by testing after Access was configured. The two
+concerns are separate: *is Access configured* is about production, *is this a dev server* is about
+where the code runs.
+
+The original placeholder-plus-localhost guard remains underneath as a second layer for the case where
+someone deploys with the AUD unset.
+
+**Superseded detail** — the earlier fix also required the request to arrive at
 localhost. A deployed Worker never is, which makes the dangerous state *unreachable* in production
 rather than merely discouraged. On any other host with the placeholder still set it logs loudly and
 returns **503 misconfigured** instead of serving.

@@ -36,7 +36,34 @@ async function getKeys(teamDomain: string): Promise<Jwk[]> {
 const b64url = (s: string) =>
   Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 
+/**
+ * Is this the local Vite dev server?
+ *
+ * `import.meta.env.DEV` is substituted at BUILD time — true in the dev server, false in anything
+ * `vite build` produces. It is therefore not spoofable at runtime: a deployed bundle cannot express
+ * it, no matter what headers arrive. The localhost check is belt-and-braces on top.
+ *
+ * This replaced keying the dev bypass on the AUD placeholder. That was a good idea with one fatal
+ * property — configuring Access (which you must do before deploying) also switched local dev OFF,
+ * so every /api route 401'd on a developer's machine and the dashboard could not be worked on at
+ * all. The two concerns are separate: "is Access configured" is about production, "is this a dev
+ * server" is about where the code is running.
+ */
+const isLocalDev = (c: { req: { url: string } }): boolean => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (!(import.meta as any).env?.DEV) return false;
+  const host = new URL(c.req.url).hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.localhost');
+};
+
 export const accessAuth: MiddlewareHandler<Ctx> = async (c, next) => {
+  // Local dev has no Access in front of the Worker. Gated on the build, so a production bundle
+  // cannot take this path regardless of configuration or request headers.
+  if (isLocalDev(c)) {
+    c.set('email', 'dev@localhost');
+    return next();
+  }
+
   if (isUnconfigured(c.env)) {
     // The dev bypass exists because local dev has no Access in front of the Worker, and keying it on
     // the AUD placeholder is deliberate — configuring Access closes it automatically rather than
