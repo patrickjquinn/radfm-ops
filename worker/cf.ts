@@ -600,7 +600,15 @@ app.get('/ai-gateway', async (c) => {
   });
   if (out.ok === false) return c.json(out);
 
-  return c.json({ ok: true, gateway: id, ...spendLimit(out.data?.result) });
+  const parsed = spendLimit(out.data?.result);
+  // When the shape is unreadable, say WHICH keys arrived. Guessing field names
+  // across redeploys is the loop this pattern exists to end — it is what turned
+  // the AI narrative from four blind deploys into one.
+  // Kept: if Cloudflare moves this shape again, the next person gets the answer
+  // in one request instead of the four redeploys it took to find it this time.
+  const shape =
+    parsed.limits == null ? JSON.stringify(out.data?.result?.spend_limits ?? null).slice(0, 300) : undefined;
+  return c.json({ ok: true, gateway: id, ...parsed, ...(shape ? { shape } : {}) });
 });
 
 /**
@@ -613,20 +621,43 @@ app.get('/ai-gateway', async (c) => {
  */
 export function spendLimit(result: any): { limits: { budget: number; window: string; enabled: boolean }[] | null } {
   if (!result || typeof result !== 'object') return { limits: null };
-  const raw =
-    result.spend_limits ?? result.spendLimits ?? result.spend_limit_rules ?? result.budgets ?? null;
-  if (raw == null) return { limits: [] }; // the gateway read fine and carries no rules
-  if (!Array.isArray(raw)) return { limits: null };
+
+  const raw = result.spend_limits ?? result.spendLimits ?? null;
+  if (raw == null) return { limits: [] }; // read fine, carries no rules
+
+  // Recorded live 6 Aug 2026 — an OBJECT, not the array the first guess assumed:
+  //   { enabled: true, rules: [{ id, enabled, limitType: 'cost',
+  //                              limit: 5, window: 86400, technique: 'sliding' }] }
+  const rules = Array.isArray(raw) ? raw : Array.isArray(raw?.rules) ? raw.rules : null;
+  if (!rules) return { limits: null };
+
+  // A master switch off means no rule is enforced, however many are listed. A
+  // rule shown as active under a disabled feature would be the panel asserting
+  // protection that is not running.
+  const featureOn = Array.isArray(raw) ? true : raw.enabled !== false;
 
   return {
-    limits: raw.map((r: any) => ({
+    limits: rules.map((r: any) => ({
       budget: Number(r?.limit ?? r?.budget ?? r?.amount ?? 0),
-      window: String(r?.interval ?? r?.window ?? r?.period ?? 'unknown'),
-      // Absent `enabled` means present-and-on; a rule that exists is enforced
-      // unless it says otherwise.
-      enabled: r?.enabled !== false
+      window: windowLabel(r?.window ?? r?.interval ?? r?.period),
+      enabled: featureOn && r?.enabled !== false
     }))
   };
+}
+
+/**
+ * The window arrives in SECONDS (86400), not as a word. Rendering it raw would
+ * put "$5 / 86400" on the panel, which is true and unreadable.
+ */
+export function windowLabel(w: unknown): string {
+  if (typeof w === 'string' && w.trim() && !/^\d+$/.test(w)) return w;
+  const n = Number(w);
+  if (!Number.isFinite(n) || n <= 0) return 'unknown';
+  const named: Record<number, string> = { 60: 'minute', 3600: 'hour', 86_400: 'day', 604_800: 'week' };
+  if (named[n]) return named[n];
+  if (n % 86_400 === 0) return `${n / 86_400} days`;
+  if (n % 3600 === 0) return `${n / 3600} hours`;
+  return `${n}s`;
 }
 
 export { app as cf };

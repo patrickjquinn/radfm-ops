@@ -7,7 +7,8 @@ import {
   groupNormalised,
   messageOf,
   normalisePath,
-  spendLimit
+  spendLimit,
+  windowLabel
 } from './cf';
 
 /**
@@ -263,25 +264,44 @@ describe('clampHours', () => {
  * was built in response to, applied to its own controls.
  */
 describe('spendLimit', () => {
-  it('reads a configured rule', () => {
-    const { limits } = spendLimit({ spend_limits: [{ limit: 5, interval: 'day', enabled: true }] });
-    expect(limits).toEqual([{ budget: 5, window: 'day', enabled: true }]);
+  /**
+   * Recorded from the LIVE gateway record on 6 Aug 2026, not invented from the
+   * docs — which is exactly how the first version got it wrong. It guessed an
+   * array of rules; the API returns an object wrapping them, and the window is
+   * seconds rather than a word.
+   */
+  const live = {
+    id: 'default',
+    spend_limits: {
+      enabled: true,
+      rules: [{ id: '7bd5241b', enabled: true, limitType: 'cost', limit: 5, window: 86400, technique: 'sliding' }]
+    }
+  };
+
+  it('reads the live shape', () => {
+    expect(spendLimit(live).limits).toEqual([{ budget: 5, window: 'day', enabled: true }]);
   });
 
-  it('accepts the alternative field spellings, since the shape is undocumented', () => {
-    expect(spendLimit({ spendLimits: [{ budget: 10, window: 'month' }] }).limits?.[0].budget).toBe(10);
-    expect(spendLimit({ budgets: [{ amount: 2, period: 'hour' }] }).limits?.[0].window).toBe('hour');
+  it('treats the feature master switch as overriding a rule that says enabled', () => {
+    // A rule listed as active under a disabled feature is not enforced. Showing it
+    // as active would be the panel asserting protection that is not running.
+    const off = { spend_limits: { enabled: false, rules: [{ limit: 5, window: 86400, enabled: true }] } };
+    expect(spendLimit(off).limits?.[0].enabled).toBe(false);
   });
 
   it('treats a rule with no enabled flag as enforced', () => {
-    // A rule that exists is enforced unless it says otherwise. Assuming the
-    // opposite would under-report protection that is actually in place.
-    expect(spendLimit({ spend_limits: [{ limit: 5, interval: 'day' }] }).limits?.[0].enabled).toBe(true);
-    expect(spendLimit({ spend_limits: [{ limit: 5, enabled: false }] }).limits?.[0].enabled).toBe(false);
+    const r = { spend_limits: { enabled: true, rules: [{ limit: 5, window: 86400 }] } };
+    expect(spendLimit(r).limits?.[0].enabled).toBe(true);
+  });
+
+  it('still accepts a bare array, in case the shape moves back', () => {
+    expect(spendLimit({ spend_limits: [{ limit: 10, window: 3600 }] }).limits).toEqual([
+      { budget: 10, window: 'hour', enabled: true }
+    ]);
   });
 
   it('reports an empty list when the gateway read fine and carries no rules', () => {
-    // This is a real finding — "no limit set" — and distinct from the case below.
+    // A real finding — "no limit set" — and distinct from the case below.
     expect(spendLimit({ id: 'default' }).limits).toEqual([]);
   });
 
@@ -289,7 +309,32 @@ describe('spendLimit', () => {
     // Null renders as "cannot verify". Returning [] here would render as
     // "no limit set", which is a claim we have not earned.
     expect(spendLimit({ spend_limits: 'nope' }).limits).toBeNull();
+    expect(spendLimit({ spend_limits: { enabled: true } }).limits).toBeNull();
     expect(spendLimit(null).limits).toBeNull();
-    expect(spendLimit('a string').limits).toBeNull();
+  });
+});
+
+describe('windowLabel', () => {
+  it('turns seconds into the word a human reads', () => {
+    // The API returns 86400. Rendering it raw would put "$5 / 86400" on the
+    // panel — true, and unreadable.
+    expect(windowLabel(86_400)).toBe('day');
+    expect(windowLabel(3600)).toBe('hour');
+    expect(windowLabel(604_800)).toBe('week');
+  });
+
+  it('handles intervals with no name', () => {
+    expect(windowLabel(259_200)).toBe('3 days');
+    expect(windowLabel(7200)).toBe('2 hours');
+    expect(windowLabel(90)).toBe('90s');
+  });
+
+  it('passes an already-worded interval straight through', () => {
+    expect(windowLabel('day')).toBe('day');
+  });
+
+  it('says unknown rather than guessing', () => {
+    expect(windowLabel(undefined)).toBe('unknown');
+    expect(windowLabel(0)).toBe('unknown');
   });
 });
