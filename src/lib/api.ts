@@ -106,6 +106,7 @@ export type Session = {
   cfTokenPresent: boolean;
   devBackendJwt: boolean;
   ownerTokenForCaller: boolean;
+  ownerTokenExpiresInDays: number | null;
   backendOrigin: string;
   scriptName: string;
   retentionHours: number;

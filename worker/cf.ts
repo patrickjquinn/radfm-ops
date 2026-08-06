@@ -30,7 +30,7 @@ const API = 'https://api.cloudflare.com/client/v4';
 
 /** Observability retains 3 days. Anything longer must be rolled up first. */
 const RETENTION_HOURS = 72;
-const clampHours = (raw: string | undefined, fallback = 24) => {
+export const clampHours = (raw: string | undefined, fallback = 24) => {
   const n = Number(raw ?? fallback);
   if (!Number.isFinite(n) || n <= 0) return fallback;
   return Math.min(n, RETENTION_HOURS);
@@ -182,7 +182,7 @@ app.get('/status4xx', async (c) => {
  * is computed against the wrong denominator. Same reasoning as the warning
  * normalisation; the design's own mock shows `/stations/art/:key`, already collapsed.
  */
-function normalisePath(p: string): string {
+export function normalisePath(p: string): string {
   return (
     p
       .replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '/:uuid')
@@ -192,7 +192,7 @@ function normalisePath(p: string): string {
   );
 }
 
-function fourxxRows(result: any) {
+export function fourxxRows(result: any) {
   const aggregates = result?.calculations?.[0]?.aggregates ?? [];
   const byKey = new Map<string, { route: string; status: string; count: number }>();
 
@@ -272,7 +272,7 @@ app.get('/logs', async (c) => {
  * was invisible. That is the 1,094-warning bug's exact signature, and the panel
  * exists to make it one row with a big number beside it.
  */
-function normalise(msg: string) {
+export function normalise(msg: string) {
   return msg
     .replace(/"[^"]*"/g, '"…"')
     .replace(/'[^']*'/g, "'…'")
@@ -290,11 +290,11 @@ function normalise(msg: string) {
  * precise failure this dashboard exists to prevent, produced by the dashboard.
  * The fallbacks are kept in case the shape shifts again.
  */
-function messageOf(e: any): string {
+export function messageOf(e: any): string {
   return String(e?.source?.message ?? e?.$workers?.event?.message ?? e?.message ?? e?.body ?? '').slice(0, 400);
 }
 
-function groupNormalised(events: any[]) {
+export function groupNormalised(events: any[]) {
   const map = new Map<string, { msg: string; count: number; first: number; last: number }>();
   for (const e of events) {
     const raw = messageOf(e);
@@ -365,7 +365,7 @@ app.get('/ae/dj', async (c) => {
  * Stripping the parenthetical is the same normalisation the warning panel applies
  * to log messages, for the same reason: one failure, one row.
  */
-function groupDjReasons(rows: any[]) {
+export function groupDjReasons(rows: any[]) {
   const byReason = new Map<string, number>();
   for (const r of rows) {
     const reason = String(r.reason ?? 'ok').replace(/\s*\(.*$/, '').trim() || 'ok';

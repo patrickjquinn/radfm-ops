@@ -67,6 +67,7 @@ export type Ctx = {
   hours: number;
   demo: Scenario | null;
   can: { read: boolean; operate: boolean; administer: boolean };
+  ownerTokenExpiresInDays: number | null;
 };
 
 export default function App() {
@@ -127,8 +128,10 @@ export default function App() {
   // Observability retains 3 days — surfaced rather than silently truncated.
   const rangeExceedsRetention = range === '7d';
 
-  const ctx: Ctx = { view, go: setView, range, hours: RANGE_HOURS[range], demo, can };
-  const health = useHealth(RANGE_HOURS[range], demo);
+  const ownerTokenExpiresInDays =
+    session.state === 'ok' ? session.data.ownerTokenExpiresInDays : null;
+  const ctx: Ctx = { view, go: setView, range, hours: RANGE_HOURS[range], demo, can, ownerTokenExpiresInDays };
+  const health = useHealth(RANGE_HOURS[range], demo, ownerTokenExpiresInDays);
   const badges = health.badges;
   const [title, sub] = TITLES[view];
 

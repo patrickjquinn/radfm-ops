@@ -70,7 +70,7 @@ export type Health = {
  * premise here is that a silent gap is how the last three incidents stayed
  * invisible.
  */
-export function useHealth(hours: number, demo: Scenario | null): Health {
+export function useHealth(hours: number, demo: Scenario | null, expiringInDays: number | null = null): Health {
   const live = !demo;
   const logHours = Math.min(hours, 72);
 
@@ -114,6 +114,23 @@ export function useHealth(hours: number, demo: Scenario | null): Health {
       go: u.go
     });
   }
+
+  // The owner token cannot renew itself — the Access session does, this does not.
+  // Warn while there is still time to mint another, rather than after half the
+  // dashboard has silently gone to "unavailable".
+  if (expiringInDays != null && expiringInDays <= 14)
+    signals.unshift({
+      title:
+        expiringInDays <= 0
+          ? 'Owner token has expired'
+          : `Owner token expires in ${expiringInDays} day${expiringInDays === 1 ? '' : 's'}`,
+      evidence:
+        'Every /admin/* panel goes to "unavailable" when it lapses. Cloudflare Access cannot refresh it — it is a Rad.FM JWT signed with the backend\u2019s secret, which Cloudflare does not hold. Mint a new one (README § Owner token), or land the Access-JWT change and retire it.',
+      metric: expiringInDays <= 0 ? 'expired' : `${expiringInDays}d`,
+      source: 'ops Worker',
+      sev: expiringInDays <= 3 ? 'bad' : 'warn',
+      go: 'overview'
+    });
 
   const probeEmpty = probe.state === 'ok' && probe.data.rows.length === 0;
   if (probeEmpty) {

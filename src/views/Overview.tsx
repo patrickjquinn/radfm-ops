@@ -17,7 +17,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
   // number on the badge, the number in the verdict and the rows below always
   // agree. Two counts of the same thing that disagree is the failure this whole
   // tool exists to prevent.
-  const { signals, verdict } = useHealth(ctx.hours, demo);
+  const { signals, verdict } = useHealth(ctx.hours, demo, ctx.ownerTokenExpiresInDays);
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>

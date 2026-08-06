@@ -42,12 +42,46 @@ app.get('/api/session', (c) =>
       Boolean(c.env.OPS_BACKEND_JWT) &&
       Boolean(c.env.OPS_OWNER_EMAIL) &&
       c.get('email')?.trim().toLowerCase() === c.env.OPS_OWNER_EMAIL?.trim().toLowerCase(),
+    /**
+     * Days until the Worker-held owner token expires, or null if none is held.
+     *
+     * The Access session renews itself; this token cannot. It is a Rad.FM JWT
+     * signed with the backend's JWT_SECRET, and Cloudflare has no way to mint or
+     * refresh one — which is the whole reason it has a fixed lifetime. Without
+     * this figure the first symptom of expiry is half the dashboard going dark
+     * for no stated reason, which is the failure mode this tool exists to avoid.
+     */
+    ownerTokenExpiresInDays: expiresInDays(c.env.OPS_BACKEND_JWT),
     backendOrigin: c.env.BACKEND_ORIGIN,
     scriptName: c.env.BACKEND_SCRIPT_NAME,
     /** Observability retains 3 days; the UI surfaces this rather than truncating silently. */
     retentionHours: 72
   })
 );
+
+/**
+ * Days until a JWT's `exp`, read WITHOUT verifying the signature.
+ *
+ * That is safe here and only here: this is the token we hold ourselves, and the
+ * answer is used to display a countdown, never to decide access. Nothing is
+ * authorised on the strength of it. Any use beyond a label must verify first.
+ */
+export function expiresInDays(jwt: string | undefined, now = Date.now()): number | null {
+  if (!jwt) return null;
+  const payload = jwt.split('.')[1];
+  if (!payload) return null;
+  try {
+    const json = JSON.parse(
+      new TextDecoder().decode(
+        Uint8Array.from(atob(payload.replace(/-/g, '+').replace(/_/g, '/')), (ch) => ch.charCodeAt(0))
+      )
+    );
+    if (typeof json?.exp !== 'number') return null;
+    return Math.floor((json.exp * 1000 - now) / 86_400_000);
+  } catch {
+    return null;
+  }
+}
 
 // Static SPA assets last, so /api never falls through to index.html.
 app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
