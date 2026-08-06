@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Ctx } from '../App';
-import { BG, C, FONT, LINE } from '../theme';
+import { BG, C, FONT, LINE, GAP } from '../theme';
 import { Icon } from '../icons';
 import { ActionButton, Prose, SectionHead, Source, type Tone, toneColor } from '../components/primitives';
 import { statValue, useAdminStats, useEntitlement, useUserList, useUserLookup } from '../lib/api';
@@ -37,7 +37,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
   const drift = useUserList('drift', !demo);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       <UserStats ctx={ctx} stats={stats} drift={drift} filter={filter} pick={setFilter} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
       <form

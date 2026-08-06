@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { C, FONT, LINE } from '../theme';
+import { C, FONT, LINE, GAP } from '../theme';
 import { Callout, SectionHead, Source } from '../components/primitives';
 import { useAdminAudit } from '../lib/api';
 import * as fx from '../lib/fixtures';
@@ -9,7 +9,7 @@ export default function Audit({ ctx }: { ctx: Ctx }) {
   const audit = useAdminAudit(!demo);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       <Callout tone="neutral">
         Every mutation writes an audit row in the same handler that performs it - actor, action, target, before/after,
         timestamp. That is the whole point of the table.{' '}

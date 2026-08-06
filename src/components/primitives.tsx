@@ -1,4 +1,4 @@
-import { BG, C, FONT, LINE, bar, dot, num } from '../theme';
+import { BG, C, CARD, FONT, GAP, LINE, bar, dot, num } from '../theme';
 import { Icon } from '../icons';
 import { reasonText, type Loaded } from '../lib/api';
 
@@ -66,8 +66,8 @@ export function Callout({
       style={{
         border: `1px solid ${border}`,
         background: bg,
-        borderRadius: 8,
-        padding: '15px 17px',
+        borderRadius: 16,
+        padding: '17px 20px',
         display: 'flex',
         gap: 12,
         alignItems: 'flex-start'
@@ -102,15 +102,13 @@ export function StatGrid({
       style={{
         display: 'grid',
         gridTemplateColumns: `repeat(auto-fit,minmax(min(100%,${min}px),1fr))`,
-        gap: 1,
-        background: 'rgba(255,255,255,0.08)',
-        border: LINE.edge,
-        borderRadius: 8,
-        overflow: 'hidden'
+        // Separate cards, real gaps. This was one bordered box of cells divided
+        // by hairlines, which reads as a table rather than as objects.
+        gap: GAP
       }}
     >
       {items.map((m) => (
-        <div key={m.label} style={{ background: BG.card, padding: '16px 18px 18px' }}>
+        <div key={m.label} style={{ ...CARD, padding: '18px 20px 20px' }}>
           <div
             style={{
               font: `600 9.5px/1 ${FONT.text}`,
@@ -260,8 +258,8 @@ export function Generated({
     <div
       style={{
         border: '1px dashed rgba(255,255,255,0.16)',
-        borderRadius: 12,
-        padding: '18px 20px',
+        borderRadius: 16,
+        padding: '20px 22px',
         background: 'repeating-linear-gradient(135deg,rgba(255,255,255,0.022) 0 6px,transparent 6px 12px)'
       }}
     >

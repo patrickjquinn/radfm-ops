@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { C, FONT, LINE, num } from '../theme';
+import { C, FONT, LINE, num, GAP } from '../theme';
 import { Bar, Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { statValue, useAdminStats, useAePlays } from '../lib/api';
 
@@ -27,7 +27,7 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
   const registered = stats.state === 'ok' ? statValue(stats.data.users) : null;
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       <Callout tone="teal" icon>
         This is the only source that can answer a historical listening question.{' '}
         <code style={{ font: `400 12px/1 ${FONT.mono}`, color: '#7BCFC5' }}>past_plays</code> in D1 overwrites on

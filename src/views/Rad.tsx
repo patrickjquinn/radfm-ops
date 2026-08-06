@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { C, FONT, LINE, num } from '../theme';
+import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
 import { Bar, Prose, SectionHead, Source } from '../components/primitives';
 import { useAeDj, useAeProbe, useAeUpstream } from '../lib/api';
@@ -17,7 +17,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
   const verified = !demo && probe.state === 'ok' && probe.data.rows.length > 0;
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       {/*
         The banner stands in demo mode too, because Analytics Engine genuinely has
         never been read - but the live probe's failure detail is suppressed there,

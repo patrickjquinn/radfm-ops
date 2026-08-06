@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Ctx } from '../App';
-import { C, FONT, LINE, num } from '../theme';
+import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
 import { Prose, SectionHead, Source } from '../components/primitives';
 import { useStations, type Station } from '../lib/api';
@@ -22,7 +22,7 @@ export default function Stations({ ctx }: { ctx: Ctx }) {
   const rows: Station[] = demo ? DEMO_STATIONS : [];
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       <form
         onSubmit={(e) => {
           e.preventDefault();

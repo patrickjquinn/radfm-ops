@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { C, FONT, LINE, num } from '../theme';
+import { C, FONT, LINE, num, GAP } from '../theme';
 import { Bar, Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { useActivation, useGrowth, useRevenue } from '../lib/api';
 import { STATE } from '../lib/vocabulary';
@@ -26,7 +26,7 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
   const revenue = useRevenue(!ctx.demo);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       <Source data={growth} what="Growth">
         {(g) => {
           const signups = g.days.reduce((a, d) => a + (d.signups ?? 0), 0);

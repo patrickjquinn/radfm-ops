@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Ctx } from '../App';
-import { C, FONT, LINE, num } from '../theme';
+import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
 import { Callout, Prose, SectionHead } from '../components/primitives';
 import { reasonText, useAiGateway, useConfig, useSession, useSetConfig, type ConfigEntry } from '../lib/api';
@@ -35,7 +35,7 @@ export default function Config({ ctx }: { ctx: Ctx }) {
       : fx.tier1.map((c) => ({ ...c, source: 'default' as const, default: c.value, location: c.loc }));
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       <Callout tone="neutral">
         Tier 1 values read from <code style={{ font: `400 12px/1 ${FONT.mono}`, color: '#7BCFC5' }}>config:&lt;key&gt;</code>{' '}
         KV through a helper with a hard-coded default. A missing or malformed value falls back to the constant in code,

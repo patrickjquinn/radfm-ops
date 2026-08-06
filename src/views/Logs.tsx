@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { C, FONT, LINE, num } from '../theme';
+import { C, FONT, LINE, num, GAP } from '../theme';
 import { Callout, Generated, Prose, SectionHead, Source } from '../components/primitives';
 import { useCluster, useLogs, type LogGroup } from '../lib/api';
 import * as fx from '../lib/fixtures';
@@ -17,7 +17,7 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
     : [];
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       <Callout tone="amber">
         A bug that had disabled setlists for a third of all gigs lived entirely in warnings - 1,094 of them in three
         days, none of which threw. Warnings are grouped by normalised message here - numbers and hex stripped as{' '}

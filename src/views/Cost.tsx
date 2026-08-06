@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { C, FONT, LINE, num } from '../theme';
+import { C, FONT, LINE, num, GAP } from '../theme';
 import { Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { useArtwork, useCost, type CostRow } from '../lib/api';
 import { STATE } from '../lib/vocabulary';
@@ -23,7 +23,7 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
   const artwork = useArtwork(Math.max(Math.round(hours / 24), 1), !ctx.demo);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       <Callout tone="teal" icon>
         Two estimates per model, never one. The gateway's is best-effort; ours uses the provider's published
         per-token rate. A gap is usually prompt caching - ours prices every input token uncached, so it reads high.

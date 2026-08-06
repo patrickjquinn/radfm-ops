@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { C, FONT, LINE, num } from '../theme';
+import { C, FONT, LINE, num, GAP } from '../theme';
 import { Bar, Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { useStatus4xx, useTraffic } from '../lib/api';
 import * as fx from '../lib/fixtures';
@@ -10,7 +10,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
   const traffic = useTraffic(ctx.hours);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       {/*
         The single most important statement in the tool, and the reason 4xx leads
         this page rather than sitting in a tab.

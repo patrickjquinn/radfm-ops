@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { BG, C, ELEV, FONT, LINE, MOTION, dot, focusLift, num } from '../theme';
+import { BG, C, CARD, ELEV, FONT, GAP, LINE, MOTION, dot, focusLift, num } from '../theme';
 import { Icon } from '../icons';
 import { Generated, KeyRow, SectionHead, Source } from '../components/primitives';
 import {
@@ -33,7 +33,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
   const { signals, verdict, domains, attention } = useHealth(ctx.hours, demo, ctx.ownerTokenExpiresInDays);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       {/*
         The hero, in the tvOS sense: one surface carrying the single most
         important thing, with everything else deferring to it.
@@ -47,8 +47,8 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
       */}
       <div
         style={{
-          ...ELEV.raised,
-          borderRadius: 14,
+          ...CARD,
+          padding: 0,
           overflow: 'hidden',
           borderColor:
             verdict.tone === 'bad' ? 'rgba(255,98,89,0.3)' : verdict.tone === 'warn' ? 'rgba(224,160,48,0.3)' : 'rgba(63,179,166,0.22)'
@@ -56,7 +56,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
       >
         <div
           style={{
-            padding: 'clamp(22px,3vw,32px)',
+            padding: 'clamp(24px,3.2vw,36px)',
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'flex-start',
@@ -98,16 +98,21 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
           </div>
         </div>
 
-        {/* The evidence, inside the same surface. */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,230px),1fr))',
-            gap: 1,
-            background: 'rgba(255,255,255,0.07)',
-            borderTop: '1px solid rgba(255,255,255,0.07)'
-          }}
-        >
+      </div>
+
+      {/*
+        Three separate cards with real space between them, not cells fused into
+        the hero by hairlines. Each is a distinct object you can look at on its
+        own, which is what makes a tvOS layout calm: things sit apart rather than
+        being packed into a grid.
+      */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))',
+          gap: GAP
+        }}
+      >
           {domains.map((d) => (
             <button
               key={d.domain}
@@ -117,21 +122,19 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               // and it turns a wall of equal boxes into something navigable.
               onMouseEnter={(e) => {
                 Object.assign(e.currentTarget.style, focusLift(true));
-                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.055)';
               }}
               onMouseLeave={(e) => {
                 Object.assign(e.currentTarget.style, focusLift(false));
-                e.currentTarget.style.background = BG.card;
+                e.currentTarget.style.background = CARD.background as string;
               }}
               style={{
-                background: BG.card,
-                padding: '18px 20px 20px',
-                border: 'none',
+                ...CARD,
                 textAlign: 'left',
                 cursor: 'pointer',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 9,
+                gap: 10,
                 position: 'relative',
                 ...focusLift(false)
               }}
@@ -165,7 +168,6 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               <span style={{ font: `400 12px/1.5 ${FONT.text}`, color: C.t2 }}>{d.detail}</span>
             </button>
           ))}
-        </div>
       </div>
 
       {/*
@@ -482,19 +484,14 @@ function ServiceState({
         display: 'grid',
         // Five standing indicators. Sized so they sit on one row on a laptop
         // rather than leaving a dead cell, which reads as a missing panel.
-        gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,228px),1fr))',
-        gap: 1,
-        // The hairline that shows through as the 1px grid gaps, so it must win
-        // over ELEV's fill - hence border and shadow only.
-        background: 'rgba(255,255,255,0.07)',
-        border: ELEV.raised.border,
-        boxShadow: ELEV.raised.boxShadow,
-        borderRadius: 12,
-        overflow: 'hidden'
+        // Separate cards with air between them, not five cells sharing hairlines
+        // inside one box. Sparse and calm is the whole point of the reference.
+        gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,215px),1fr))',
+        gap: GAP
       }}
     >
       {cards.map((c) => (
-        <div key={c.label} style={{ background: BG.card, padding: '18px 18px 20px' }}>
+        <div key={c.label} style={{ ...CARD, padding: '18px 20px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <span style={dot(c.tone === 'ok' ? C.ok : c.tone === 'bad' ? C.bad : C.warn)} />
             <span

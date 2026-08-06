@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { C, FONT, LINE, num } from '../theme';
+import { C, FONT, LINE, num, GAP } from '../theme';
 import { Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { useAeRecs } from '../lib/api';
 import * as fx from '../lib/fixtures';
@@ -10,7 +10,7 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
   const recs = useAeRecs(ctx.hours);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div style={{ display: 'grid', gap: GAP }}>
       {demo ? (
         <StatGrid items={fx.recStats(demo)} />
       ) : (

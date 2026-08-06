@@ -92,6 +92,29 @@ export const sevColor = (sev: 'bad' | 'warn' | 'info' | 'ok') =>
  *   raised panels that sit on it
  *   focus  the one thing under the cursor
  */
+/**
+ * A card. tvOS is made of these and almost nothing else.
+ *
+ * The first pass built a dense admin grid: cells sharing 1px hairlines inside
+ * one bordered container. That is the opposite of the platform it claimed to
+ * borrow from - tvOS cards float separately, with real gaps between them,
+ * generous radius and a lot of air. Sparse and calm, not packed.
+ *
+ * Radius 18 because at 8 a card reads as a table cell, and the roundness is
+ * doing real work: it is what makes a surface read as an object rather than as
+ * a region of a page.
+ */
+export const CARD: React.CSSProperties = {
+  background: 'linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.012) 100%)',
+  border: '1px solid rgba(255,255,255,0.075)',
+  boxShadow: '0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px -12px rgba(0,0,0,0.7)',
+  borderRadius: 18,
+  padding: 'clamp(18px,2vw,24px)'
+};
+
+/** Space BETWEEN cards. Real gaps, never a hairline. */
+export const GAP = 16;
+
 export const ELEV = {
   raised: {
     background: 'linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.012) 100%)',
