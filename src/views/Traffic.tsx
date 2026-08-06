@@ -51,7 +51,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
                   {/*
                     The grouped telemetry query returns a capped set of groups, so these
                     routes can describe only part of the window. Saying so is the whole
-                    point — a breakdown that quietly adds up to 100% of what it can see
+                    point - a breakdown that quietly adds up to 100% of what it can see
                     reads as complete, and that is how the 4xx total came to disagree
                     with itself across time windows.
                   */}
@@ -59,7 +59,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
                     <div style={{ paddingTop: 12 }}>
                       <Prose>
                         These routes account for {d.rows.accounted.toLocaleString()} of{' '}
-                        {d.rows.total?.toLocaleString()} 4xx in this window —{' '}
+                        {d.rows.total?.toLocaleString()} 4xx in this window -{' '}
                         <strong style={{ color: C.warnText, fontWeight: 500 }}>
                           {missing.toLocaleString()} are not shown
                         </strong>
@@ -227,7 +227,7 @@ function summarise(series: any[], fourxxTotal: number | null) {
       tone: fourxxTotal == null ? ('warn' as const) : Number(pct) > 1 ? ('bad' as const) : ('plain' as const)
     },
     {
-      // This is the platform's own headline metric — 5xx and uncaught exceptions,
+      // This is the platform's own headline metric - 5xx and uncaught exceptions,
       // 4xx excluded. Shown next to the real 4xx count so the gap is visible
       // rather than something you have to already know about.
       label: '5xx / exceptions',
@@ -241,7 +241,7 @@ function summarise(series: any[], fourxxTotal: number | null) {
       value: dur(wall),
       // Rad streams MP3 audio, so wall time legitimately runs to minutes and a
       // large number here is not on its own a fault. Said out loud because the
-      // obvious reading — "requests are taking six minutes" — is wrong.
+      // obvious reading - "requests are taking six minutes" - is wrong.
       context: 'worst hour · audio streams inflate this',
       tone: 'plain' as const
     }

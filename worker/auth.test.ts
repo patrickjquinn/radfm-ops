@@ -6,7 +6,7 @@ import { isUnconfigured, UNCONFIGURED_AUD } from './types';
 /**
  * The gate, and the two things that decide whether it is real.
  *
- * These do not exercise the JWKS crypto — that needs a live key set and belongs
+ * These do not exercise the JWKS crypto - that needs a live key set and belongs
  * in an integration test. They cover the branches that decide whether the crypto
  * runs at all, which is where a mistake is silent rather than loud.
  */
@@ -38,7 +38,7 @@ describe('isUnconfigured', () => {
 });
 
 describe('expiresInDays', () => {
-  /** Unsigned, because the function reads the payload without verifying — by design. */
+  /** Unsigned, because the function reads the payload without verifying - by design. */
   const tokenExpiringIn = (days: number, now: number) => {
     const exp = Math.floor((now + days * 86_400_000) / 1000);
     // btoa rather than Buffer: this runs in the same runtime the Worker does.
@@ -77,7 +77,7 @@ describe('expiresInDays', () => {
  * The owner-token guard.
  *
  * Mirrors worker/backend.ts. The original objection to a Worker-held token was
- * that it "gives every Access user the rights of whoever's token it is" — this
+ * that it "gives every Access user the rights of whoever's token it is" - this
  * is the answer to that, so it is worth a test that fails loudly if it regresses.
  */
 const ownerTokenFor = (env: { OPS_OWNER_EMAIL?: string; OPS_BACKEND_JWT?: string }, caller?: string) => {
@@ -146,7 +146,7 @@ describe('staleIssuerHint', () => {
     expect(hint).toContain('long-wildflower-f4fb');
     expect(hint).toContain('radfm.cloudflareaccess.com');
     expect(hint).toMatch(/ACCESS_ISSUER/);
-    // Logging out does NOT fix this — the issuer belongs to the application.
+    // Logging out does NOT fix this - the issuer belongs to the application.
     expect(hint).toMatch(/does not resolve by logging out/i);
   });
 

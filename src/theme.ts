@@ -3,7 +3,7 @@
  *
  * Colour is SEMANTIC, never decorative. Three signal colours plus white
  * opacities: teal means ok or live, amber means degraded, red means failing. A
- * colour on this page always means a state — there is no categorical palette,
+ * colour on this page always means a state - there is no categorical palette,
  * because a category colour would make "which of these is bad?" unanswerable at
  * a glance, which is the only question this tool exists to answer.
  */
@@ -20,7 +20,7 @@ export const C = {
    * 0.50, not the 0.38 this shipped with.
    *
    * Design measured it: 0.38 composites to 3.44:1 on #0A0C0D and fails WCAG AA at
-   * every size the type scale assigns t3 — provenance meta at 10.5px, stat labels
+   * every size the type scale assigns t3 - provenance meta at 10.5px, stat labels
    * at 9.5px. 0.50 measures 5.37:1 and passes.
    *
    * Worth being blunt about: this is the tier used for PROVENANCE, and provenance

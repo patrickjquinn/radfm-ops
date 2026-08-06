@@ -31,7 +31,7 @@ export type Bindings = {
   OPS_BACKEND_JWT?: string;
   OPS_OWNER_EMAIL?: string;
   /**
-   * Workers AI. Grants INFERENCE, not data access — which is why adding it does
+   * Workers AI. Grants INFERENCE, not data access - which is why adding it does
    * not weaken the standing invariant that this Worker gets no D1 binding.
    *
    * Optional in the type on purpose: every AI route checks for it and degrades to
@@ -41,8 +41,8 @@ export type Bindings = {
   AI?: Ai;
   /**
    * The text model id, pinned. Tier 1 because Cloudflare deprecates models on
-   * their cadence rather than ours — `gemma-3-12b` was already marked deprecated
-   * in May 2026 — so this must be changeable without a code release.
+   * their cadence rather than ours - `gemma-3-12b` was already marked deprecated
+   * in May 2026 - so this must be changeable without a code release.
    */
   AI_MODEL?: string;
 };
@@ -51,7 +51,7 @@ export type Variables = {
   email: string;
   /**
    * The verified Access assertion, kept verbatim so the /admin/* proxy can forward
-   * it as Cf-Access-Token. See worker/backend.ts — this is what lets the backend
+   * it as Cf-Access-Token. See worker/backend.ts - this is what lets the backend
    * attribute a request to the human rather than to a shared credential.
    */
   accessJwt?: string;

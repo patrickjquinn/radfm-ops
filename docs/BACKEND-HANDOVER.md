@@ -1,9 +1,9 @@
-# Backend handover — four routes the ops dashboard needs
+# Backend handover - four routes the ops dashboard needs
 
 **For:** whoever owns `rad-fm-backend`
 **From:** the `radfm-ops` build, 5 August 2026
 **Status:** the dashboard is built and deployed-ready. Four panels are wired, rendering, and waiting
-on routes that do not exist yet. Nothing here is speculative UI — each one has a client already
+on routes that do not exist yet. Nothing here is speculative UI - each one has a client already
 written against the contract below, so shipping a route lights up its panel with no frontend change.
 
 Until then those panels render **"this backend route has not been built yet"**, naming the route.
@@ -17,7 +17,7 @@ incidents stayed invisible, so it will not quietly show nothing.
 These are not style preferences. Each one is a bug this system has already had.
 
 1. **Gate with `adminAuth('viewer')`** for reads, `adminAuth('operator')` for the one write.
-   Unauthorised returns **404, not 403** — that is what `adminAuth` already does, don't work around
+   Unauthorised returns **404, not 403** - that is what `adminAuth` already does, don't work around
    it. The dashboard never distinguishes "not allowed" from "not found", on purpose.
 2. **`bind()` accepts only null, number, string and ArrayBuffer.** Not booleans, not `undefined`.
    Passing a boolean throws at runtime; `JSON.stringify(undefined)` returns `undefined`, not
@@ -25,7 +25,7 @@ These are not style preferences. Each one is a bug this system has already had.
 3. **Do not stack ~10 `UNION ALL` counts.** D1 fails with `SQLITE_ERROR 7500`, "too many terms in
    compound SELECT". `/admin/stats` already runs separate statements for this reason.
 4. **Degrade per field, not per request.** `/admin/users/:id/entitlement` already does this with its
-   `soft()` helper — copy it. A support engineer asking "why does this account think it's premium?"
+   `soft()` helper - copy it. A support engineer asking "why does this account think it's premium?"
    should get the answer even if one auxiliary table is missing.
 5. **Failed sub-queries return `-1`, never 0.** That is the existing "query failed" sentinel and the
    dashboard renders it as "unavailable". A zero that means "I couldn't ask" is the exact failure
@@ -60,14 +60,14 @@ always and as a RevenueCat subscriber id whenever billing is involved.
 }
 ```
 
-Always an array, even for one hit. **Return all matches rather than auto-selecting the best one** —
+Always an array, even for one hit. **Return all matches rather than auto-selecting the best one** -
 the client lists them and makes the operator choose. Two accounts sharing an email prefix is exactly
 the case where guessing produces a confident support answer about the wrong person.
 
 **Suggested SQL:**
 
 ```sql
--- email (exact first, then prefix — exact match must win)
+-- email (exact first, then prefix - exact match must win)
 SELECT id, email, username, created_at FROM users WHERE email = ?1
 UNION
 SELECT id, email, username, created_at FROM users WHERE email LIKE ?1 || '%' LIMIT 20;
@@ -87,7 +87,7 @@ instance.
 ## 2. `GET /admin/stations?limit=&offset=&q=`
 
 **Why:** Phase 3 station browser. All 341 stations are user-generated and subscriber counts sit at
-roughly one each, so this is a **content browser, not a leaderboard** — the client renders it as
+roughly one each, so this is a **content browser, not a leaderboard** - the client renders it as
 such and deliberately does not rank by popularity, because that signal does not exist.
 
 **Auth:** `adminAuth('viewer')`.
@@ -116,7 +116,7 @@ ORDER BY s.created_at DESC
 LIMIT ?1 OFFSET ?2;
 ```
 
-`subscribers = 0` is an **orphan** — nothing references it and its artwork is still occupying R2.
+`subscribers = 0` is an **orphan** - nothing references it and its artwork is still occupying R2.
 The client badges these. They are cleanup candidates, not an error, so don't filter them out.
 
 `q`, when present, should match `name`, `mood` or `genres`. Same caution as above: bound it.
@@ -127,7 +127,7 @@ The client badges these. They are cleanup candidates, not an error, so don't fil
 
 **Why:** this is the one that matters most. **Setlist fill rate sat around 65% while looking
 perfectly healthy**, because the enrichment failures logged as warnings and warnings are not errors
-— 1,094 of them in three days, none of which threw, and it had disabled setlists for a third of all
+- 1,094 of them in three days, none of which threw, and it had disabled setlists for a third of all
 gigs. A dashboard for this system that cannot show this number has not learned the lesson.
 
 **Auth:** `adminAuth('viewer')`.
@@ -138,20 +138,20 @@ gigs. A dashboard for this system that cannot show this number has not learned t
 { "fillRate": 0.75, "sampled": 100, "filled": 75, "windowHours": 24 }
 ```
 
-`fillRate` is a **fraction between 0 and 1**, not a percentage — the client formats it. Baseline is
+`fillRate` is a **fraction between 0 and 1**, not a percentage - the client formats it. Baseline is
 **0.75**, measured on a live 100-event London listing; the dashboard raises a signal below **0.70**.
 
 **How to compute it is your call, and it is the real work here.** The shape of the question is:
 "of the gigs we served in this window, what proportion came back with a non-empty setlist?" Two
 routes:
 
-- **Cheapest:** count over `GIG_CACHE` KV — entries are keyed by city-country and hold the enriched
+- **Cheapest:** count over `GIG_CACHE` KV - entries are keyed by city-country and hold the enriched
   result. A cached entry with an empty setlist array is a miss.
 - **Better:** emit an Analytics Engine event from the enrichment path (`trackSetlist`, with
   `filled` as a double) and aggregate it there. This survives beyond KV TTL and gives you the trend
   the 3-day Observability retention cannot.
 
-**If you take the Analytics Engine route, append a new blob/double slot — never reorder or
+**If you take the Analytics Engine route, append a new blob/double slot - never reorder or
 repurpose an existing one.** The slots are positional and Analytics Engine has no schema, so
 reordering silently changes the meaning of every historical row already written.
 
@@ -168,7 +168,7 @@ KV write instead of a deploy.
 
 **Auth:** `adminAuth('viewer')` to read, **`adminAuth('operator')` to write.**
 
-### The Tier 1 set — and nothing else
+### The Tier 1 set - and nothing else
 
 | Key | Location | Default |
 | --- | --- | --- |
@@ -181,7 +181,7 @@ KV write instead of a deploy.
 
 **Treat this as an allowlist.** A generic "write any KV key" endpoint behind an admin role is a much
 larger surface than this feature needs, and the recommendation weights (Tier 2) and prompt pools
-(Tier 3) must never become reachable this way — they are a tuned system and version-controlled
+(Tier 3) must never become reachable this way - they are a tuned system and version-controlled
 creative assets respectively. See `README.md` §6.
 
 ### `GET /admin/config` → 200
@@ -212,13 +212,13 @@ Returns the updated entry in the same shape as one element of `values` above.
 1. **Validate against the allowlist and a per-key type/range.** `MAX_OTP_ATTEMPTS = 0` locks every
    user out of the product. `PREMIUM_TTL_S = 0` hammers RevenueCat on every request. Bound them.
 2. **Write the `admin_audit` row in the same handler**, with actor, key, before and after. Not in a
-   wrapper, not in middleware, not afterwards — a write that succeeds while its audit row fails is
+   wrapper, not in middleware, not afterwards - a write that succeeds while its audit row fails is
    an unattributable production change. This is the entire reason the table exists.
 3. **Return 4xx on validation failure with a `detail` string.** The client renders `detail`
    verbatim under the field, so make it a sentence an operator can act on.
 4. **Reject anything not in the allowlist with 404**, consistent with the rest of `/admin/*`.
 
-### The read helper — the part that is easy to get wrong
+### The read helper - the part that is easy to get wrong
 
 ```ts
 // The default MUST live in code. A config system that fails to an empty value is
@@ -237,7 +237,7 @@ async function cfg(env: Env, key: Tier1Key): Promise<number> {
 }
 ```
 
-Cache with a short TTL — every request reading KV for six keys is six extra reads on a hot path.
+Cache with a short TTL - every request reading KV for six keys is six extra reads on a hot path.
 
 ---
 
@@ -250,7 +250,7 @@ Cache with a short TTL — every request reading KV for six keys is six extra re
   can be asked for, never *who* may ask. Enforce `operator` on the PUT handler regardless of what
   the client believes.
 - **Rendering, empty states and error text** are done. You do not need to shape messages for the UI
-  — return the contract and a `detail` string on failure.
+  - return the contract and a `detail` string on failure.
 
 ## How to verify each one landed
 
@@ -270,7 +270,7 @@ Each panel names the missing route until then, so "did it ship?" is answerable b
 All four were exercised against a throwaway stub implementing exactly the shapes above, including
 the config write path end to end: `PUT` → validation rejection → valid write → audit row → the
 Audit view updating. Two real client bugs came out of that and are fixed. So the contracts are
-known to work — if your implementation matches what is written here, the dashboard will render it.
+known to work - if your implementation matches what is written here, the dashboard will render it.
 
 One naming detail that bit us, worth matching exactly: the existing `/admin/audit` returns
 `{ entries: [...] }` with columns `actor_id` and `actor_email` (not `actor_user_id`). The client now

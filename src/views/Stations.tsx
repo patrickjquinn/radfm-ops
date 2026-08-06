@@ -6,7 +6,7 @@ import { Prose, SectionHead, Source } from '../components/primitives';
 import { useStations, type Station } from '../lib/api';
 
 /**
- * Stations Plus browser — Phase 3, read-only.
+ * Stations Plus browser - Phase 3, read-only.
  *
  * Not a leaderboard. All 341 stations are user-generated and subscriber counts
  * sit at roughly one each, so ranking them by popularity would invent a signal
@@ -158,10 +158,10 @@ function Rows({ rows }: { rows: Station[] }) {
                 textOverflow: 'ellipsis'
               }}
             >
-              {s.mood ?? '—'}
+              {s.mood ?? '-'}
             </span>
             <span style={{ width: 96, textAlign: 'right', font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.4)' }}>
-              {(s.created_at ?? '').slice(0, 10) || '—'}
+              {(s.created_at ?? '').slice(0, 10) || '-'}
             </span>
             <span style={{ ...num, width: 64, textAlign: 'right', font: `400 12.5px/1.2 ${FONT.mono}`, color: orphan ? C.warnText : C.t2 }}>
               {s.subscribers}
@@ -177,7 +177,7 @@ const Empty = ({ text }: { text: string }) => (
   <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)' }}>{text}</div>
 );
 
-/** Shapes only — the live counts are 341 stations, all user-generated, ~1 sub each. */
+/** Shapes only - the live counts are 341 stations, all user-generated, ~1 sub each. */
 const DEMO_STATIONS: Station[] = [
   { id: 'st_8f21', name: 'Rainy Sunday Soul', mood: 'mellow', genres: 'soul, r&b', created_at: '2026-08-02', subscribers: 1, is_user_generated: 1 },
   { id: 'st_71ce', name: 'Late Desk Focus', mood: 'focused', genres: 'ambient', created_at: '2026-08-01', subscribers: 1, is_user_generated: 1 },

@@ -7,7 +7,7 @@ import type { Ctx } from './types';
  * The governing rule, from the spike doc and the design team's data-binding spec:
  *
  *   The LLM never produces a number, a count, a rate, or a verdict. It only ever
- *   explains, groups, or routes — over numbers health.ts has already computed.
+ *   explains, groups, or routes - over numbers health.ts has already computed.
  *
  * This dashboard exists because Cloudflare's console rendered a total auth outage
  * as "0 Errors". A model that writes fluent, confident, wrong prose is the same
@@ -20,9 +20,9 @@ import type { Ctx } from './types';
  *     invent a source.
  *   - /cluster returns GROUPINGS only. Counts stay exact sums from the regex pass,
  *     which remains authoritative. Clustering can only ever say "these rows look
- *     like the same thing" — it can never change what a row counts.
+ *     like the same thing" - it can never change what a row counts.
  *
- * Neither has tools. That is not an omission — warning text contains
+ * Neither has tools. That is not an omission - warning text contains
  * user-generated station names and third-party artist names, which is
  * attacker-influenceable input. A summariser that reads that text must not also
  * be able to act. If a tool-caller is ever added it must not see raw log text.
@@ -42,7 +42,7 @@ const COSINE_THRESHOLD = 0.86;
  *
  * This is what makes a spend limit real. The AI binding called directly does NOT
  * pass through the gateway, so a limit configured in the dashboard would apply to
- * nothing and read as protection that is not there — which is exactly the class
+ * nothing and read as protection that is not there - which is exactly the class
  * of false reassurance this dashboard exists to eliminate.
  *
  * `default` is a real gateway id: AI Gateway creates one on first use, so this
@@ -57,7 +57,7 @@ const GATEWAY = { id: 'default' } as const;
  * Applied to EVERY string that crosses into a model call, without exception and
  * without asking whether this particular caller needs it. Cloudflare states it
  * does not train on customer content and does not share it between customers,
- * but retention is not documented anywhere I could find — so the safe assumption
+ * but retention is not documented anywhere I could find - so the safe assumption
  * is that anything sent may persist somewhere we cannot audit.
  *
  * Order matters: emails before digit runs, or the digits inside an address get
@@ -105,7 +105,7 @@ export function validCitations(claimed: unknown, allowed: string[]): string[] {
 /**
  * Sentences the model must not contribute, enforced in code.
  *
- * The system prompt asks for these to be avoided and the model does it anyway —
+ * The system prompt asks for these to be avoided and the model does it anyway -
  * measured live: it returned "Despite the current stability" and "operating
  * without major disruptions" under a prompt that banned exactly those. A prompt
  * is a request, not a constraint, and everything else in this dashboard puts its
@@ -113,17 +113,17 @@ export function validCitations(claimed: unknown, allowed: string[]): string[] {
  *
  * Two groups, for two different harms:
  *
- *   VERDICT   — the paragraph claiming a state the verdict above it computes. If
+ *   VERDICT   - the paragraph claiming a state the verdict above it computes. If
  *               the two ever disagree, this is generated prose contradicting a
  *               measured value on the same screen, which is the failure mode the
  *               whole product exists to prevent.
- *   FILLER    — length without information. The operator is already looking at
+ *   FILLER    - length without information. The operator is already looking at
  *               the dashboard; "worth monitoring" is not a finding.
  */
 const BANNED_SENTENCE = new RegExp(
   [
     // A whole-system state claim: a broad subject near a state word. This is the
-    // shape that can contradict the verdict, not the words in isolation — "the
+    // shape that can contradict the verdict, not the words in isolation - "the
     // orchestrator degraded gracefully" is a measured fact and must survive.
     String.raw`\b(?:system|service|platform|everything|things|overall|all systems)\b[^.!?]{0,48}\b(?:stable|healthy|unhealthy|fine|nominal|normal|operational|degraded|critical|good)\b`,
     // Fixed phrases that are verdicts however they are constructed.
@@ -139,15 +139,31 @@ const BANNED_SENTENCE = new RegExp(
  *
  * Rejecting the whole narrative would make the panel unavailable most of the
  * time; keeping it whole would let a verdict claim through. Sentence-level is the
- * granularity where the model's actual contribution — the connection between two
- * signals — usually survives while the boilerplate does not.
+ * granularity where the model's actual contribution - the connection between two
+ * signals - usually survives while the boilerplate does not.
  */
 export function stripBanned(narrative: string): string {
-  return narrative
+  return asciiPunctuation(narrative)
     .split(/(?<=[.!?])\s+/)
     .filter((sentence) => sentence.trim() && !BANNED_SENTENCE.test(sentence))
     .join(' ')
     .trim();
+}
+
+/**
+ * Normalise the model's punctuation to plain ASCII.
+ *
+ * Models reach for em dashes and smart quotes constantly, and this text renders
+ * straight into the UI beside copy we control. Asking in the prompt is not
+ * enough - the same reason stripBanned exists - so it is done here, where it
+ * cannot be ignored.
+ */
+export function asciiPunctuation(text: string): string {
+  return text
+    .replace(/[\u2014\u2013]/g, '-')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/\u2026/g, '...');
 }
 
 const NARRATIVE_SCHEMA = {
@@ -163,7 +179,7 @@ const NARRATIVE_SCHEMA = {
  * Untrusted content is fenced and labelled as data.
  *
  * Signal evidence strings are written by us, but they interpolate values that are
- * not — station names, artist names, upstream error text. Saying so explicitly is
+ * not - station names, artist names, upstream error text. Saying so explicitly is
  * cheap and is the only mitigation that survives the summariser one day being
  * given something more dangerous than a paragraph to write.
  */
@@ -182,17 +198,18 @@ const NARRATIVE_SYSTEM = [
   '4. If the signals show nothing wrong, say so plainly and say what is worth doing anyway.',
   '',
   'Style: 2-3 sentences. Plain, declarative, no headings, no bullets.',
+  'Use only plain ASCII punctuation. No em dashes, no en dashes, no smart quotes.',
   '',
   'BANNED, because they add length without adding information: "it is worth monitoring", "keep an',
   'eye on", "may indicate a potential issue", "further investigation is warranted", "to ensure it',
   'does not worsen". The operator is already looking at the dashboard. If you have nothing to add',
   'beyond what the signal list says, say the one thing that is worth doing and stop.',
   '',
-  'Do not restate the signal titles — they are listed directly below you. Your value is the',
+  'Do not restate the signal titles - they are listed directly below you. Your value is the',
   'connection between them, or the consequence a list cannot express.',
   '',
   'Never write a signal id, a field name, or a severity level in the prose. Do not write phrases',
-  'like "according to signal:x" or "has a severity of warn" — that is reading the input back. The',
+  'like "according to signal:x" or "has a severity of warn" - that is reading the input back. The',
   'ids belong in the citations array and the operator can see the severity as a colour.',
   '',
   'Reply with ONLY a JSON object, no prose around it, no code fence:',
@@ -242,7 +259,7 @@ app.post('/narrative', async (c) => {
      *
      * `response_format` is documented for the OpenAI-compatible endpoint; through
      * the AI binding this model rejects it outright with `3043: Internal server
-     * error` — a message that reads like Cloudflare being down rather than like a
+     * error` - a message that reads like Cloudflare being down rather than like a
      * rejected parameter, which is why this is worth writing down.
      *
      * So: try it, and on failure retry once without. The prompt asks for JSON
@@ -322,7 +339,7 @@ app.post('/narrative', async (c) => {
 
     // Only once we know we HAVE content: strip what the model must not contribute.
     // Ordered after the shape check so "could not read the reply" and "read it and
-    // it was all boilerplate" stay distinguishable — they need different fixes.
+    // it was all boilerplate" stay distinguishable - they need different fixes.
     const cleaned = stripBanned(narrative);
     if (!cleaned) {
       console.warn(`[ai] narrative was entirely banned phrasing: ${narrative.slice(0, 160)}`);
@@ -360,7 +377,7 @@ app.post('/narrative', async (c) => {
  * displays. Clustering runs on top and reports only DISAGREEMENT: groups the
  * regexes kept apart that mean the same thing.
  *
- * Framing it as a diff rather than a replacement is what makes it safe to ship —
+ * Framing it as a diff rather than a replacement is what makes it safe to ship -
  * the worst case is a wrong sentence in a labelled box, not a wrong count in the
  * table.
  */
@@ -416,7 +433,7 @@ export function cosine(a: number[], b: number[]): number {
  * two or more.
  *
  * `total` is a plain sum of counts the regex pass already established. It is
- * arithmetic over measured values, done here in code — the model contributes the
+ * arithmetic over measured values, done here in code - the model contributes the
  * grouping and nothing else, which is the whole contract.
  */
 export function findMerges(
@@ -467,14 +484,14 @@ export function findMerges(
  * next model swap silently empties the panel.
  *
  * `message.reasoning` is deliberately NOT read. On a reasoning model that field
- * holds the chain of thought — working, not answer. Rendering it would put the
+ * holds the chain of thought - working, not answer. Rendering it would put the
  * model's private deliberation on the Overview page dressed as a finding, which
  * is a worse failure than showing nothing.
  */
 /**
  * Normalise the four shapes a Workers AI reply can arrive in.
  *
- * Measured on this account, 6 Aug 2026 — this is not defensive guessing:
+ * Measured on this account, 6 Aug 2026 - this is not defensive guessing:
  *
  *   { response: "text" }                              llama, no response_format
  *   { response: { narrative, citations } }            llama WITH response_format
@@ -509,7 +526,7 @@ function neuronsFor(usage: any): number | null {
   const outTok = Number(usage?.completion_tokens ?? usage?.output_tokens);
   if (!Number.isFinite(inTok) || !Number.isFinite(outTok)) return null;
   // llama-3.3-70b-instruct-fp8-fast: 26,668 per M input, 204,805 per M output.
-  // Approximate by construction — it is keyed to the pinned model, and the model
+  // Approximate by construction - it is keyed to the pinned model, and the model
   // id is a Tier 1 value that can change without this constant changing with it.
   // Shown as a rough consumption figure, never billed against.
   return Math.round((inTok / 1e6) * 26_668 + (outTok / 1e6) * 204_805);
@@ -532,7 +549,7 @@ export function safeParse(s: string): any {
     try {
       return JSON.parse(cleaned.slice(start, end + 1));
     } catch {
-      /* genuinely not JSON — the caller falls back to treating it as prose */
+      /* genuinely not JSON - the caller falls back to treating it as prose */
     }
   }
   return null;
@@ -543,7 +560,7 @@ export function safeParse(s: string): any {
  *
  * A minimal call against each model this Worker depends on. Exists because
  * Workers AI reports every server-side failure as `3043: Internal server error`
- * regardless of cause — a wrong model id, a plan restriction and a capacity
+ * regardless of cause - a wrong model id, a plan restriction and a capacity
  * problem are indistinguishable from the error alone, and all three read as
  * "Cloudflare is down".
  *

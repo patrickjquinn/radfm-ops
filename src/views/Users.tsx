@@ -67,7 +67,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
       */}
       {/*
         Lookup is operator-level. Prefix search over `users` is a directory walk in
-        20-row pages — bulk access to personal data rather than dashboard reading —
+        20-row pages - bulk access to personal data rather than dashboard reading -
         so the role check runs before the query server-side and a viewer cannot
         drive it at all. The client must not even ask: a viewer who did would get a
         bare 404 and no way to tell it from a rate limit or a missing migration.
@@ -119,7 +119,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
                         user {m.id}
                       </span>
                       <span style={{ flex: 1, minWidth: 0, font: `400 12.5px/1.4 ${FONT.text}`, color: 'rgba(255,255,255,0.85)' }}>
-                        {m.email ?? '—'}
+                        {m.email ?? '-'}
                       </span>
                       <span style={{ font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.4)' }}>
                         {(m.created_at ?? '').slice(0, 10)}
@@ -156,7 +156,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
               // succeeds. A null section is not "no entitlement".
               d?.audit == null ? (
                 <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: C.warnText }}>
-                  Audit section came back null. That is per-field degradation, not "no history" — the rest of this page is
+                  Audit section came back null. That is per-field degradation, not "no history" - the rest of this page is
                   still valid.
                 </div>
               ) : (
@@ -164,7 +164,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
                   rows={(d.audit ?? []).map((a: any) => ({
                     at: String(a.created_at ?? '').slice(0, 10),
                     action: [a.source, a.entitlement_id].filter(Boolean).join(' · ') || 'entitlement change',
-                    source: String(a.source ?? '—')
+                    source: String(a.source ?? '-')
                   }))}
                 />
               )
@@ -262,9 +262,9 @@ function EntitlementCard({
         }}
       >
         {!crossChecked
-          ? 'Only the local row was read. /admin/users/:id/entitlement does not return a RevenueCat answer, so there is nothing to compare it against — this panel cannot currently tell you whether the cache is stale, which is the single thing it exists to detect. The backend needs to add the live lookup.'
+          ? 'Only the local row was read. /admin/users/:id/entitlement does not return a RevenueCat answer, so there is nothing to compare it against - this panel cannot currently tell you whether the cache is stale, which is the single thing it exists to detect. The backend needs to add the live lookup.'
           : drift
-            ? 'Local says premium, RevenueCat says expired, and the cached row is stale against a 300s TTL. This is the incident that silently stripped paid segments from live subscribers — treat the remote answer as truth.'
+            ? 'Local says premium, RevenueCat says expired, and the cached row is stale against a 300s TTL. This is the incident that silently stripped paid segments from live subscribers - treat the remote answer as truth.'
             : 'premium_users is a cache of RevenueCat, not a source of truth. Both are shown because agreement is the only way to know the cache is sound.'}
       </div>
 
@@ -279,12 +279,12 @@ function EntitlementCard({
           alignItems: 'center'
         }}
       >
-        <ActionButton label="Force reconcile" allowed={false} why={ctx.can.operate ? 'Phase 4 — writes are not enabled yet' : 'Requires operator'} />
-        <ActionButton label="Grant premium" allowed={false} why={ctx.can.administer ? 'Phase 4 — writes are not enabled yet' : 'Requires owner'} />
-        <ActionButton label="Revoke premium" allowed={false} why={ctx.can.administer ? 'Phase 4 — writes are not enabled yet' : 'Requires owner'} />
+        <ActionButton label="Force reconcile" allowed={false} why={ctx.can.operate ? 'Phase 4 - writes are not enabled yet' : 'Requires operator'} />
+        <ActionButton label="Grant premium" allowed={false} why={ctx.can.administer ? 'Phase 4 - writes are not enabled yet' : 'Requires owner'} />
+        <ActionButton label="Revoke premium" allowed={false} why={ctx.can.administer ? 'Phase 4 - writes are not enabled yet' : 'Requires owner'} />
         <span style={{ flex: 1 }} />
         <span style={{ font: `400 11px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.35)' }}>
-          Mutations are Phase 4 — reads must earn trust first
+          Mutations are Phase 4 - reads must earn trust first
         </span>
       </div>
     </div>
@@ -355,7 +355,7 @@ function headerOf(d: any, id: string) {
   const u = d?.user ?? {};
   return {
     title: `user ${u.id ?? id}${u.email ? ` · ${u.email}` : ''}`,
-    sub: [u.created_at ? `created ${String(u.created_at).slice(0, 10)}` : null].filter(Boolean).join(' · ') || '—'
+    sub: [u.created_at ? `created ${String(u.created_at).slice(0, 10)}` : null].filter(Boolean).join(' · ') || '-'
   };
 }
 
@@ -372,29 +372,29 @@ function shape(d: any) {
 
   const local: { k: string; v: string; tone: Tone }[] = [
     { k: 'premium', v: premium ? 'true' : 'false', tone: premium ? 'ok' : 'dim' },
-    { k: 'granted', v: d?.local?.grantedAt ?? '—', tone: 'dim' },
-    { k: 'since', v: meta?.premium_since ?? (meta === null ? 'unavailable' : '—'), tone: meta === null ? 'warn' : 'dim' },
-    { k: 'last_source', v: meta?.last_source ?? (meta === null ? 'unavailable' : '—'), tone: meta === null ? 'warn' : 'dim' },
-    { k: 'app_id', v: meta?.app_id ?? '—', tone: 'dim' }
+    { k: 'granted', v: d?.local?.grantedAt ?? '-', tone: 'dim' },
+    { k: 'since', v: meta?.premium_since ?? (meta === null ? 'unavailable' : '-'), tone: meta === null ? 'warn' : 'dim' },
+    { k: 'last_source', v: meta?.last_source ?? (meta === null ? 'unavailable' : '-'), tone: meta === null ? 'warn' : 'dim' },
+    { k: 'app_id', v: meta?.app_id ?? '-', tone: 'dim' }
   ];
 
   const rcRows: { k: string; v: string; tone: Tone }[] = rc
     ? [
         { k: 'entitlement', v: rc.active ? 'active' : 'expired', tone: rc.active ? 'ok' : 'bad' },
-        { k: 'expires', v: rc.expires ?? '—', tone: rc.active ? 'dim' : 'bad' },
-        { k: 'subscriber', v: meta?.rc_subscriber_id ?? '—', tone: 'dim' },
+        { k: 'expires', v: rc.expires ?? '-', tone: rc.active ? 'dim' : 'bad' },
+        { k: 'subscriber', v: meta?.rc_subscriber_id ?? '-', tone: 'dim' },
         { k: 'checked', v: 'live', tone: 'dim' }
       ]
     : [
-        // Not "no subscription" — we did not get an answer, and saying otherwise
+        // Not "no subscription" - we did not get an answer, and saying otherwise
         // is precisely the failure this panel exists to catch.
         { k: 'entitlement', v: 'unavailable', tone: 'warn' },
         { k: 'expires', v: 'unavailable', tone: 'warn' },
-        { k: 'subscriber', v: meta?.rc_subscriber_id ?? '—', tone: 'dim' },
+        { k: 'subscriber', v: meta?.rc_subscriber_id ?? '-', tone: 'dim' },
         { k: 'checked', v: 'not returned by /admin', tone: 'warn' }
       ];
 
-  // Drift — and agreement — are only claimed when both sides actually answered.
+  // Drift - and agreement - are only claimed when both sides actually answered.
   // Reporting "in agreement" off a single source is the same mistake as trusting
   // premium_users alone, which is the incident this panel was built for.
   const crossChecked = Boolean(rc);

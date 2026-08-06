@@ -10,7 +10,7 @@ import type { Ctx } from './types';
  *
  *   - Unauthorised returns 404, NOT 403. A 403 confirms the surface exists and
  *     that the caller merely lacks a role. Do not build UI that distinguishes
- *     "not allowed" from "not found" — the API will not tell you, on purpose.
+ *     "not allowed" from "not found" - the API will not tell you, on purpose.
  *   - Role is resolved server-side per request. Never cache it beyond a page
  *     load, and never read a role from the token: tokens outlive grants.
  *   - It fails closed. Before migration 0003 is applied every /admin/* route
@@ -19,7 +19,7 @@ import type { Ctx } from './types';
  *
  * An allowlist, not a passthrough, and split by method. Reads are broad; the only
  * write that can cross this boundary is a Tier 1 config value. Every other
- * mutation — grant premium, revoke, force reconcile, rollback — is rejected here
+ * mutation - grant premium, revoke, force reconcile, rollback - is rejected here
  * as well as being absent from the UI, so enabling one is a deliberate act in two
  * places rather than an oversight in one.
  */
@@ -42,7 +42,7 @@ const ALLOWED_GET = [
 ];
 
 /**
- * Tier 1 runtime config only, and `operator` is enforced on the backend side —
+ * Tier 1 runtime config only, and `operator` is enforced on the backend side -
  * this allowlist controls the shape of what can be asked for, never who may ask.
  * Authorisation stays where the role lives.
  */
@@ -51,17 +51,17 @@ const ALLOWED_PUT = [/^\/admin\/config\/[A-Z0-9_]+$/];
 app.all('/*', async (c) => {
   const method = c.req.method;
   if (method !== 'GET' && method !== 'PUT') {
-    return c.json({ error: 'read_only', detail: 'Mutations are Phase 4 — reads must earn trust first' }, 405);
+    return c.json({ error: 'read_only', detail: 'Mutations are Phase 4 - reads must earn trust first' }, 405);
   }
 
   // The operator's own Rad.FM JWT, in order of preference:
   //
-  //   1. A token pasted in this browser — always wins, so a second operator is
+  //   1. A token pasted in this browser - always wins, so a second operator is
   //      always acting as themselves.
   //   2. The Worker-held owner token, but ONLY for the one Access identity named
   //      in OPS_OWNER_EMAIL. This exists because requiring the sole authorised
   //      operator to paste a second credential after already authenticating
-  //      through Access is friction with no security return — the Access policy
+  //      through Access is friction with no security return - the Access policy
   //      has already established who they are. The email check is what keeps the
   //      original objection answered: add a second person to the Access policy and
   //      they do NOT inherit this token, they supply their own.
@@ -96,7 +96,7 @@ app.all('/*', async (c) => {
       // Access Linked App Token. Forwarding the verified assertion lets an Access
       // application in front of api.rad-fm.com/admin/* validate that this request
       // came from THIS dashboard, and attribute it to the original human in the
-      // audit log — no shared secret, no minted token, nothing to expire.
+      // audit log - no shared secret, no minted token, nothing to expire.
       //
       // Sent unconditionally and harmlessly ignored until that application exists,
       // so the backend side can land without a redeploy here.
@@ -108,7 +108,7 @@ app.all('/*', async (c) => {
 
   // Diagnostics on failure only. A 404 from /admin/* is deliberately ambiguous
   // (limiter, role, or migration), so when one happens it is worth recording what
-  // this side actually sent — otherwise the ambiguity becomes untraceable across
+  // this side actually sent - otherwise the ambiguity becomes untraceable across
   // two codebases, which is precisely what happened when the owner token was
   // removed and every /admin/* route began 404ing.
   if (!res.ok) {
@@ -132,7 +132,7 @@ app.all('/*', async (c) => {
  * The one test that licenses deleting OPS_BACKEND_JWT.
  *
  * "Confirm the dashboard still reaches /admin/*" is satisfiable with the bearer
- * attached, which proves only that requests arrive — nothing about whether Access
+ * attached, which proves only that requests arrive - nothing about whether Access
  * carries identity. Acting on that weaker check is what took /admin/* down on
  * 6 Aug: the bearer was deleted, the Access path had never actually resolved a
  * role, and every route 404'd with no way to tell which of three causes it was.
@@ -140,7 +140,7 @@ app.all('/*', async (c) => {
  * So this asks the real question: with the bearer DELIBERATELY suppressed and only
  * the forwarded assertion to go on, does the backend resolve a role?
  *
- * Suppressing a credential can only ever reduce this request's authority — there
+ * Suppressing a credential can only ever reduce this request's authority - there
  * is no configuration in which sending less makes it stronger. That is what makes
  * a permanent probe safe to leave mounted rather than a one-off branch to delete.
  *
@@ -157,7 +157,7 @@ probe.get('/access', async (c) => {
       ok: false,
       verdict: 'no_assertion',
       detail:
-        'No Access assertion on this request, so there is nothing to forward. Under the local dev bypass there is no Access in front of the Worker — run this against the deployed ops.rad-fm.com.'
+        'No Access assertion on this request, so there is nothing to forward. Under the local dev bypass there is no Access in front of the Worker - run this against the deployed ops.rad-fm.com.'
     });
   }
 
@@ -181,7 +181,7 @@ probe.get('/access', async (c) => {
   try {
     body = JSON.parse(text);
   } catch {
-    /* a non-JSON body is itself the finding — keep it as text */
+    /* a non-JSON body is itself the finding - keep it as text */
   }
 
   // A role is the only pass condition. A 200 carrying no `can` object means the
@@ -218,7 +218,7 @@ probe.get('/access', async (c) => {
     meaning: ok
       ? 'The Access path resolves a role without a bearer. OPS_BACKEND_JWT is now dead weight and can be deleted.'
       : res.status === 403
-        ? 'Cloudflare Access rejected this at the edge — the Linked App Token policy did not accept the forwarded token. Do NOT delete OPS_BACKEND_JWT.'
+        ? 'Cloudflare Access rejected this at the edge - the Linked App Token policy did not accept the forwarded token. Do NOT delete OPS_BACKEND_JWT.'
         : 'The backend did not resolve a role from the assertion alone. Deleting OPS_BACKEND_JWT would take /admin/* down. Check the backend logs for the aud it received vs expected.'
   });
 });

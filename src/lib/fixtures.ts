@@ -5,12 +5,12 @@
  * reason: the Incident scenario is the only way to see the failure-state layouts
  * without waiting for a real incident.
  *
- * **Where a real baseline is known, these use it** — the DJ numbers below are the
+ * **Where a real baseline is known, these use it** - the DJ numbers below are the
  * measured 86% pass rate, not the prototype's invented 94%. A demo that teaches a
  * baseline the live system does not have is worse than no demo, because it is the
  * screen people look at first.
  *
- * Demo mode is loud about itself — a persistent banner, never the default, never
+ * Demo mode is loud about itself - a persistent banner, never the default, never
  * a silent fallback when a live source fails. A dashboard that quietly shows
  * fixtures when it cannot reach the real thing is worse than one that shows
  * nothing, and this whole tool exists because of a metric that lied by omission.
@@ -82,7 +82,7 @@ export const volume = (s: Scenario) =>
 export const warnings = (s: Scenario) =>
   s === 'incident'
     ? [
-        { count: 1094, msg: 'setlist enrich failed for gig <n> — falling back to empty', window: 'first 3d ago · last 2m ago', bad: true },
+        { count: 1094, msg: 'setlist enrich failed for gig <n> - falling back to empty', window: 'first 3d ago · last 2m ago', bad: true },
         { count: 318, msg: 'apple music lookup returned no isrc for <n>', window: 'first 3d ago · last 6m ago' },
         { count: 96, msg: 'rate limit near threshold for ip <hex>', window: 'first 2d ago · last 41m ago' },
         { count: 44, msg: 'premium check fell back to cached value', window: 'first 3d ago · last 1h ago' },
@@ -90,7 +90,7 @@ export const warnings = (s: Scenario) =>
       ]
     : [
         { count: 287, msg: 'apple music lookup returned no isrc for <n>', window: 'first 3d ago · last 8m ago' },
-        { count: 64, msg: 'setlist enrich failed for gig <n> — falling back to empty', window: 'first 3d ago · last 22m ago' },
+        { count: 64, msg: 'setlist enrich failed for gig <n> - falling back to empty', window: 'first 3d ago · last 22m ago' },
         { count: 38, msg: 'rate limit near threshold for ip <hex>', window: 'first 3d ago · last 1h ago' },
         { count: 9, msg: 'reccobeats timeout, retrying', window: 'first 2d ago · last 5h ago' }
       ];
@@ -103,7 +103,7 @@ export const errors = [
 
 /**
  * The real `degeneracyReason` vocabulary and the real volumes, measured 5 Aug
- * 2026: 307 events over 7 days, 264 `ok` — an **86% pass rate is healthy**, not a
+ * 2026: 307 events over 7 days, 264 `ok` - an **86% pass rate is healthy**, not a
  * problem. The prototype's invented 94% and its made-up reason names taught the
  * wrong baseline and the wrong words, which is a bad thing for the only screen
  * anyone will look at before they have seen the live one.
@@ -172,7 +172,7 @@ export const entitlement = (s: Scenario) => {
       { k: 'premium', v: 'true', tone: 'ok' as const },
       { k: 'since', v: '2026-03-14', tone: 'dim' as const },
       { k: 'last_source', v: 'webhook', tone: 'dim' as const },
-      { k: 'cache_age', v: drift ? '41h — TTL is 300s' : '112s', tone: drift ? ('warn' as const) : ('dim' as const) }
+      { k: 'cache_age', v: drift ? '41h - TTL is 300s' : '112s', tone: drift ? ('warn' as const) : ('dim' as const) }
     ],
     rc: [
       { k: 'entitlement', v: drift ? 'expired' : 'active', tone: drift ? ('bad' as const) : ('ok' as const) },
@@ -192,7 +192,7 @@ export const entitlement = (s: Scenario) => {
 export const signals = (s: Scenario) =>
   s === 'incident'
     ? [
-        { title: '4xx spike on /users/auth/refresh', evidence: '401 responses, sustained 42 min. Headline Errors still reads 0 — 4xx is excluded from it.', metric: '2,847', source: 'Observability', sev: 'bad' as const, go: 'traffic' as const },
+        { title: '4xx spike on /users/auth/refresh', evidence: '401 responses, sustained 42 min. Headline Errors still reads 0 - 4xx is excluded from it.', metric: '2,847', source: 'Observability', sev: 'bad' as const, go: 'traffic' as const },
         { title: 'Setlist fill rate below baseline', evidence: 'Failures log as warnings, so nothing throws and nothing alerts. This is the 1,094-warning bug’s signature.', metric: '62%', source: 'D1 · setlists', sev: 'warn' as const, go: 'logs' as const },
         { title: 'DJ degeneracy rising', evidence: 'Non-ok share up from a ~14% baseline to 36% over 24h. The guard is rejecting more takes.', metric: '36%', source: 'Analytics Engine', sev: 'warn' as const, go: 'rad' as const },
         { title: 'Analytics Engine never read', evidence: 'Instrumented and writing, but no query has ever confirmed datapoints land. Needs a scoped API token.', metric: 'unverified', source: 'day-one check', sev: 'info' as const, go: 'rad' as const }
@@ -211,7 +211,7 @@ export const tier1 = [
 ];
 
 /**
- * Tier 2. These interact — a tuned system, not independent dials, and they are
+ * Tier 2. These interact - a tuned system, not independent dials, and they are
  * meant to sum sensibly. A slider here produces confident nonsense, so they are
  * shown beside the outcome metrics and changed in code.
  */

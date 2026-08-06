@@ -11,7 +11,7 @@ export default function Audit({ ctx }: { ctx: Ctx }) {
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <Callout tone="neutral">
-        Every mutation writes an audit row in the same handler that performs it — actor, action, target, before/after,
+        Every mutation writes an audit row in the same handler that performs it - actor, action, target, before/after,
         timestamp. That is the whole point of the table.{' '}
         <code style={{ font: `400 12px/1 ${FONT.mono}`, color: '#7BCFC5' }}>admin_audit</code> is append-only.
       </Callout>
@@ -26,12 +26,12 @@ export default function Audit({ ctx }: { ctx: Ctx }) {
             {(d) => {
               const rows = normalise(d);
               // No mutation route uses adminAuth('operator') or ('owner') yet, so
-              // an empty table is the expected state — not a failure to read it.
+              // an empty table is the expected state - not a failure to read it.
               if (!rows.length)
                 return (
                   <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)', maxWidth: '70ch' }}>
                     No admin actions recorded. Expected: no route performs a mutation yet, so nothing has had cause to
-                    write here. This view exists before the actions do, deliberately — the first mutation must write its
+                    write here. This view exists before the actions do, deliberately - the first mutation must write its
                     row in the same handler.
                   </div>
                 );
@@ -46,7 +46,7 @@ export default function Audit({ ctx }: { ctx: Ctx }) {
 
 /**
  * Actor was a fixed 88px, sized for "user 3". The real column is `actor_email`,
- * so every row rendered an address on top of the action text — unreadable, and on
+ * so every row rendered an address on top of the action text - unreadable, and on
  * the one screen whose job is to say who did what. Widths now match the data.
  */
 const cols = [
@@ -137,7 +137,7 @@ function Rows({ rows }: { rows: { at: string; actor: string; action: string; tar
  *
  * The other key names are tolerated because this shape is not pinned by a test on
  * either side yet, and an audit view that silently renders empty is worse than
- * one that is slightly permissive — an empty audit trail reads as "nothing has
+ * one that is slightly permissive - an empty audit trail reads as "nothing has
  * happened", which is the most misleading thing this table could say.
  */
 function normalise(d: any) {
@@ -145,8 +145,8 @@ function normalise(d: any) {
   return rows.map((r) => ({
     at: String(r.created_at ?? r.at ?? '').replace('T', ' ').slice(0, 16),
     actor: r.actor_email ?? (r.actor_id != null ? `user ${r.actor_id}` : (r.actor ?? 'system')),
-    action: String(r.action ?? '—'),
-    target: String(r.target ?? '—'),
+    action: String(r.action ?? '-'),
+    target: String(r.target ?? '-'),
     tone: r.outcome && r.outcome !== 'ok' ? 'bad' : 'plain'
   }));
 }

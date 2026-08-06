@@ -239,7 +239,7 @@ export function ActionButton({
 /**
  * The wrapper every piece of generated content lives in.
  *
- * Distinguished by TEXTURE, not by colour — a hatched surface, a dashed border and
+ * Distinguished by TEXTURE, not by colour - a hatched surface, a dashed border and
  * an explicit GENERATED chip. Colour in this product is fully committed to
  * severity: teal means healthy, amber degraded, red failing. Adding a fourth hue
  * for "written by a model" would break the one rule that lets an operator answer

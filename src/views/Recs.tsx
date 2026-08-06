@@ -29,7 +29,7 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
               d.rows.length ? (
                 <SourceRows
                   rows={d.rows.map((r: any) => ({
-                    source: String(r.source ?? '—'),
+                    source: String(r.source ?? '-'),
                     pool: String(Math.round(Number(r.pool ?? 0))),
                     ms: String(Math.round(Number(r.ms ?? 0))),
                     degraded: String(Math.round(Number(r.degraded ?? 0))),
@@ -46,7 +46,7 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
         )}
         <div style={{ paddingTop: 14 }}>
           <Prose>
-            Degraded climbing means the orchestrator is falling back. It degrades gracefully, so nothing throws — this
+            Degraded climbing means the orchestrator is falling back. It degrades gracefully, so nothing throws - this
             table is the only way to see it.
           </Prose>
         </div>
@@ -58,7 +58,7 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
           <Prose>
             These demand opposite responses, which is why they are separated rather than counted
             together. <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>error:deadline</code>{' '}
-            is upstreams running slow — expected at roughly 2% and not a code fault.{' '}
+            is upstreams running slow - expected at roughly 2% and not a code fault.{' '}
             <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>error:validation</code>{' '}
             is a caller bug: the request never got in and the listener got nothing.
           </Prose>
@@ -82,7 +82,7 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
         <SectionHead title="Scoring weights" meta="Tier 2 · read-only" />
         <div style={{ padding: '11px 0 12px' }}>
           <Prose>
-            These interact — a tuned system, not independent dials. A slider here produces confident nonsense, so they
+            These interact - a tuned system, not independent dials. A slider here produces confident nonsense, so they
             are shown beside the outcome metrics above and changed in code.
           </Prose>
         </div>
@@ -202,7 +202,7 @@ function summarise(rows: any[]) {
 /**
  * A cause is only "not a fault" if it is a deadline. Everything else means someone
  * got a worse experience than they should have, and `error:validation` means they
- * got nothing at all — so it is coloured as the failure it is.
+ * got nothing at all - so it is coloured as the failure it is.
  *
  * `legacy` is rows written before the backend separated the causes. It is shown as
  * unknown rather than folded into `error:other`, because "we did not record why"
@@ -223,7 +223,7 @@ function CauseRows({ rows }: { rows: { cause: string; n: number }[] }) {
             ? 'pre-4fa6f58e · cause not recorded'
             : cause === 'error:other'
               ? 'unclassified error'
-              : 'unexpected value — not an error cause';
+              : 'unexpected value - not an error cause';
 
   return (
     <>

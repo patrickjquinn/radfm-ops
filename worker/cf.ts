@@ -6,7 +6,7 @@ import type { Ctx } from './types';
  * browser bundle, so something server-side must hold it.
  *
  * Every route here is a NAMED QUERY built on this side. It is deliberately not a
- * generic passthrough — a passthrough that forwards a client-supplied GraphQL
+ * generic passthrough - a passthrough that forwards a client-supplied GraphQL
  * document or a client-supplied SQL string hands the browser the full authority
  * of the token, which is the one thing this file exists to prevent.
  *
@@ -40,7 +40,7 @@ type Fail = { ok: false; reason: string; detail?: string };
 const fail = (reason: string, detail?: string): Fail => ({ ok: false, reason, detail });
 
 /**
- * Absence of a token is a first-class, named state — not an error to swallow and
+ * Absence of a token is a first-class, named state - not an error to swallow and
  * not a zero to render. The UI turns this into "unavailable", which is the whole
  * point: a dashboard that shows 0 when it means "I could not ask" is worse than
  * one that shows nothing.
@@ -147,7 +147,7 @@ app.get('/status4xx', async (c) => {
   /**
    * TWO queries, and the reason is the whole point of this dashboard.
    *
-   * A grouped telemetry query returns a capped number of groups — measured at TEN,
+   * A grouped telemetry query returns a capped number of groups - measured at TEN,
    * regardless of the `limit` sent (tried 100 and 1000) and regardless of window
    * width. Summing those groups therefore does not produce a total; it produces
    * "the sum of ten groups the API chose". That number is not monotonic in the
@@ -216,7 +216,7 @@ export function exactTotal(result: any): number | null {
  * Collapse the raw paths into routes.
  *
  * Observability groups on the literal request path, so one route arrives as many
- * rows — `/apple/v1/me/library/playlists/p.9oDKOAatN4QNJbm/tracks` is not a
+ * rows - `/apple/v1/me/library/playlists/p.9oDKOAatN4QNJbm/tracks` is not a
  * different problem from the same call with another playlist id. Without this the
  * table fragments the real signal across a long tail and every share percentage
  * is computed against the wrong denominator. Same reasoning as the warning
@@ -273,14 +273,14 @@ export function fourxxRows(result: any, exact: number | null) {
     // storm take, and both are invisible in the platform's own error metric.
     rows: shown.map((r) => ({
       ...r,
-      share: denom ? `${((r.count / denom) * 100).toFixed(1)}%` : '—',
+      share: denom ? `${((r.count / denom) * 100).toFixed(1)}%` : '-',
       bad: r.status === '401' || r.status === '429'
     }))
   };
 }
 
 /**
- * Warnings grouped by normalised message — numbers and hex stripped, matching
+ * Warnings grouped by normalised message - numbers and hex stripped, matching
  * the backend's scripts/logs.ts. A bug that had disabled setlists for a third of
  * all gigs lived entirely in warnings: 1,094 of them in three days, none of which
  * threw. Normalisation happens here because the telemetry API groups on raw
@@ -303,7 +303,7 @@ app.get('/logs', async (c) => {
    *
    * We must fetch raw EVENTS here rather than an aggregation, because the telemetry
    * API groups on the raw message and the whole value of this panel is normalising
-   * first — the setlist failure arrives once per artist name, and collapsing it is
+   * first - the setlist failure arrives once per artist name, and collapsing it is
    * what turned dozens of 1-count rows into a single row reading 519 in 24h.
    *
    * But the events view does not return every matching event, and what it returns
@@ -344,7 +344,7 @@ app.get('/logs', async (c) => {
     hours,
     level,
     retentionHours: RETENTION_HOURS,
-    /** Exact count for the window. Null means unavailable — never render as 0. */
+    /** Exact count for the window. Null means unavailable - never render as 0. */
     total,
     /** How many events the breakdown below was actually built from. */
     sampled,
@@ -355,13 +355,13 @@ app.get('/logs', async (c) => {
 });
 
 /**
- * Numbers and hex, as scripts/logs.ts does — plus quoted literals, which it does
+ * Numbers and hex, as scripts/logs.ts does - plus quoted literals, which it does
  * not.
  *
  * Verified against live warnings: the setlist lookup failure arrives as
  * `[setlists] last.fm fallback failed for "ursula harrison quartet": ...` once per
  * artist, so a single failure mode occupied twelve of the top twenty rows at one
- * count each while the real story — that this is the biggest source of warnings —
+ * count each while the real story - that this is the biggest source of warnings -
  * was invisible. That is the 1,094-warning bug's exact signature, and the panel
  * exists to make it one row with a big number beside it.
  */
@@ -378,7 +378,7 @@ export function normalise(msg: string) {
 /**
  * The message lives at `source.message`, verified against a live response on
  * 5 Aug 2026. The documented-looking `$workers.event.message` does not exist, and
- * reading it produced an empty string for every event — so the warning panel
+ * reading it produced an empty string for every event - so the warning panel
  * rendered "no warnings" while the window genuinely contained them. That is the
  * precise failure this dashboard exists to prevent, produced by the dashboard.
  * The fallbacks are kept in case the shape shifts again.
@@ -449,7 +449,7 @@ app.get('/ae/dj', async (c) => {
 });
 
 /**
- * `degeneracyReason` carries its parameters — the live values include
+ * `degeneracyReason` carries its parameters - the live values include
  * `too-short(20w < 24)`, `too-short(18w < 24)`, `wrong-track("a-ha")`. Those are
  * one failure mode each, not six, and left raw they scatter a real regression
  * across a long tail of one-count rows while the share column divides by a
@@ -493,7 +493,7 @@ app.get('/ae/recs', async (c) => {
    *      invisible under a "19 degraded" headline. `double1` is trackCount.
    *   2. WHY the pool collapsed. `blob5` (poolSource) used to be the bare string
    *      `error` for everything. It now separates `error:deadline` (upstreams slow,
-   *      expected ~2%, NOT a code fault) from `error:validation` (a caller bug —
+   *      expected ~2%, NOT a code fault) from `error:validation` (a caller bug -
    *      the listener gets nothing). Those demand opposite responses.
    *
    * Rows written before the backend's 4fa6f58e still read bare `error`; they are
@@ -510,7 +510,7 @@ app.get('/ae/recs', async (c) => {
       c.env,
       // ONLY the error causes. poolSource also carries the healthy pipeline names
       // (`apple-catalog+reccobeats` and friends), and including them put the
-      // successful path at 79.7% of a panel headed "why the pool collapsed" —
+      // successful path at 79.7% of a panel headed "why the pool collapsed" -
       // a table that answers a different question than its title asks.
       `SELECT blob5 AS cause, count() AS n FROM rad_fm_events
        WHERE blob1 = 'recs' AND blob5 LIKE 'error%' AND timestamp > now() - INTERVAL '${hours}' HOUR
@@ -575,7 +575,7 @@ app.get('/versions', async (c) => {
  * The AI Gateway spend limit, READ rather than asserted.
  *
  * The Config view previously stated "not set" as a literal. A panel that claims
- * the state of a safety control without reading it is worse than no panel — it
+ * the state of a safety control without reading it is worse than no panel - it
  * would keep saying whatever it was written to say after someone turned the
  * control off, which is the false-reassurance failure this whole dashboard was
  * built in response to. The other rows on that panel read from /api/session, and
@@ -602,7 +602,7 @@ app.get('/ai-gateway', async (c) => {
 
   const parsed = spendLimit(out.data?.result);
   // When the shape is unreadable, say WHICH keys arrived. Guessing field names
-  // across redeploys is the loop this pattern exists to end — it is what turned
+  // across redeploys is the loop this pattern exists to end - it is what turned
   // the AI narrative from four blind deploys into one.
   // Kept: if Cloudflare moves this shape again, the next person gets the answer
   // in one request instead of the four redeploys it took to find it this time.
@@ -616,7 +616,7 @@ app.get('/ai-gateway', async (c) => {
  *
  * The field name is not documented and has moved before, so several spellings
  * are accepted. `limits: null` means "the shape was not what we expected" and is
- * reported as unavailable — deliberately NOT as "no limit", because guessing
+ * reported as unavailable - deliberately NOT as "no limit", because guessing
  * wrong in that direction invents reassurance.
  */
 export function spendLimit(result: any): { limits: { budget: number; window: string; enabled: boolean }[] | null } {
@@ -625,7 +625,7 @@ export function spendLimit(result: any): { limits: { budget: number; window: str
   const raw = result.spend_limits ?? result.spendLimits ?? null;
   if (raw == null) return { limits: [] }; // read fine, carries no rules
 
-  // Recorded live 6 Aug 2026 — an OBJECT, not the array the first guess assumed:
+  // Recorded live 6 Aug 2026 - an OBJECT, not the array the first guess assumed:
   //   { enabled: true, rules: [{ id, enabled, limitType: 'cost',
   //                              limit: 5, window: 86400, technique: 'sliding' }] }
   const rules = Array.isArray(raw) ? raw : Array.isArray(raw?.rules) ? raw.rules : null;

@@ -15,7 +15,7 @@ import {
  * These tests exist because every one of them describes a bug that shipped.
  *
  * The fixtures are shapes recorded from LIVE Cloudflare responses on 5 Aug 2026,
- * not shapes invented from the documentation — which is exactly how the bugs got
+ * not shapes invented from the documentation - which is exactly how the bugs got
  * in. Where a field name looks odd (`source.message`, `status: 'success'`), that
  * oddness is the point and must not be "tidied up".
  */
@@ -26,11 +26,11 @@ describe('messageOf', () => {
   // containing hundreds of them.
   it('reads the message from source.message, where it actually lives', () => {
     const live = {
-      source: { level: 'warn', message: '[explorer] attempt 1/3 produced no usable article — retrying' },
+      source: { level: 'warn', message: '[explorer] attempt 1/3 produced no usable article - retrying' },
       $workers: { event: { request: { path: '/ai/explorer' } } },
       timestamp: 1785931242554
     };
-    expect(messageOf(live)).toBe('[explorer] attempt 1/3 produced no usable article — retrying');
+    expect(messageOf(live)).toBe('[explorer] attempt 1/3 produced no usable article - retrying');
   });
 
   it('returns empty rather than throwing on a shape it does not recognise', () => {
@@ -197,7 +197,7 @@ describe('fourxxRows', () => {
    *
    * The grouped telemetry query returns a capped set of groups, so the rows can
    * describe only part of the window. Dividing by the row sum would make the
-   * breakdown total a tidy 100% and read as complete — the most convincing way to
+   * breakdown total a tidy 100% and read as complete - the most convincing way to
    * be wrong. Shares must divide by the real count, and the shortfall must show.
    */
   it('divides shares by the true count, not by the rows it can see', () => {
@@ -213,7 +213,7 @@ describe('fourxxRows', () => {
   });
 
   it('never reports a total of 0 when the exact count is unavailable', () => {
-    // 0 would render as "no 4xx" — a false healthy reading, which is the exact
+    // 0 would render as "no 4xx" - a false healthy reading, which is the exact
     // failure mode (Cloudflare's own console showing "0 Errors" during an outage)
     // that this dashboard was built to catch.
     const { total, covered } = fourxxRows(live, null);
@@ -260,13 +260,13 @@ describe('clampHours', () => {
 /**
  * "No limit" and "could not check whether there is a limit" demand different
  * actions from the operator, and only one of them is reassuring. Collapsing the
- * second into the first would invent safety — the exact failure this dashboard
+ * second into the first would invent safety - the exact failure this dashboard
  * was built in response to, applied to its own controls.
  */
 describe('spendLimit', () => {
   /**
    * Recorded from the LIVE gateway record on 6 Aug 2026, not invented from the
-   * docs — which is exactly how the first version got it wrong. It guessed an
+   * docs - which is exactly how the first version got it wrong. It guessed an
    * array of rules; the API returns an object wrapping them, and the window is
    * seconds rather than a word.
    */
@@ -301,7 +301,7 @@ describe('spendLimit', () => {
   });
 
   it('reports an empty list when the gateway read fine and carries no rules', () => {
-    // A real finding — "no limit set" — and distinct from the case below.
+    // A real finding - "no limit set" - and distinct from the case below.
     expect(spendLimit({ id: 'default' }).limits).toEqual([]);
   });
 
@@ -317,7 +317,7 @@ describe('spendLimit', () => {
 describe('windowLabel', () => {
   it('turns seconds into the word a human reads', () => {
     // The API returns 86400. Rendering it raw would put "$5 / 86400" on the
-    // panel — true, and unreadable.
+    // panel - true, and unreadable.
     expect(windowLabel(86_400)).toBe('day');
     expect(windowLabel(3600)).toBe('hour');
     expect(windowLabel(604_800)).toBe('week');

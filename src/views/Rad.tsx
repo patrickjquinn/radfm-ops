@@ -20,7 +20,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
     <div style={{ display: 'grid', gap: 20 }}>
       {/*
         The banner stands in demo mode too, because Analytics Engine genuinely has
-        never been read — but the live probe's failure detail is suppressed there,
+        never been read - but the live probe's failure detail is suppressed there,
         since mixing real diagnostics into fixture data is exactly the kind of
         half-true panel this dashboard is meant not to produce.
       */}
@@ -79,7 +79,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
               d.rows.length ? (
                 <UpstreamRows
                   rows={d.rows.map((r: any) => ({
-                    provider: String(r.provider ?? '—'),
+                    provider: String(r.provider ?? '-'),
                     calls: Number(r.calls ?? 0).toLocaleString(),
                     fail: Number(r.fail ?? 0).toLocaleString(),
                     p50: `${Math.round(Number(r.latency ?? 0))}ms`,
@@ -116,7 +116,7 @@ function UnverifiedBanner({ detail }: { detail?: string }) {
       </div>
       <div style={{ font: `400 12.5px/1.6 ${FONT.text}`, color: 'rgba(255,255,255,0.72)', maxWidth: '74ch' }}>
         Analytics Engine has never been read. Writes are fire-and-forget, so an absent datapoint is not proof the event
-        did not happen — confirm the binding is deployed before assuming the code path is cold. Everything below is the
+        did not happen - confirm the binding is deployed before assuming the code path is cold. Everything below is the
         panel shape, not confirmed data.
         {detail && <div style={{ marginTop: 6, color: C.warnText }}>{detail}</div>}
       </div>

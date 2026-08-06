@@ -20,7 +20,7 @@ import {
 /**
  * Icons, from IBM Carbon.
  *
- * The prototype referenced two PNG sets — `glyphs_3x` and `glyphs_teal` — because
+ * The prototype referenced two PNG sets - `glyphs_3x` and `glyphs_teal` - because
  * it could not tint a bitmap. Carbon's components render `fill="currentColor"`,
  * so the active/inactive tint is a colour change on the parent rather than a
  * second copy of every asset: same shapes at every DPI, half the files.

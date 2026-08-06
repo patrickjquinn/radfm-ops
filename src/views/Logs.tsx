@@ -19,8 +19,8 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <Callout tone="amber">
-        A bug that had disabled setlists for a third of all gigs lived entirely in warnings — 1,094 of them in three
-        days, none of which threw. Warnings are grouped by normalised message here — numbers and hex stripped as{' '}
+        A bug that had disabled setlists for a third of all gigs lived entirely in warnings - 1,094 of them in three
+        days, none of which threw. Warnings are grouped by normalised message here - numbers and hex stripped as{' '}
         <code style={{ font: `400 12px/1 ${FONT.mono}`, color: C.warnText }}>scripts/logs.ts</code> does, and quoted
         literals collapsed as well, so one failure mode is one row rather than one row per artist name.
       </Callout>
@@ -43,7 +43,7 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
                     The counts below come from a sample, because normalising the message
                     requires the raw events and the events view does not return them all.
                     The headline count is exact and separate. Saying which is which is the
-                    difference between a ranked breakdown and a wrong number — summing the
+                    difference between a ranked breakdown and a wrong number - summing the
                     sample once put 12h above 24h on the same screen.
                   */}
                   {!d.covered && d.total != null && (
@@ -81,7 +81,7 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
               d.events && d.events.length ? (
                 <ErrorRows
                   rows={d.events.map((e: any) => ({
-                    time: e.timestamp ? new Date(e.timestamp).toISOString().slice(11, 19) + 'Z' : '—',
+                    time: e.timestamp ? new Date(e.timestamp).toISOString().slice(11, 19) + 'Z' : '-',
                     msg: e.message,
                     route: e.route
                   }))}
@@ -170,7 +170,7 @@ function NoErrors({ go }: { go: () => void }) {
     <div style={{ padding: '28px 0', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
       <div style={{ font: `400 13.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.62)' }}>No errors in this window.</div>
       <div style={{ font: `400 12px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)', maxWidth: '56ch' }}>
-        That is not the same as healthy — check the 4xx panel and the warning groups above before concluding anything.
+        That is not the same as healthy - check the 4xx panel and the warning groups above before concluding anything.
       </div>
       <button
         type="button"
@@ -201,7 +201,7 @@ const Empty = ({ text }: { text: string }) => (
 
 function rel(ts: number) {
   const ms = Date.now() - ts;
-  if (!Number.isFinite(ms) || ms < 0) return '—';
+  if (!Number.isFinite(ms) || ms < 0) return '-';
   const m = Math.floor(ms / 60_000);
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
@@ -212,7 +212,7 @@ function rel(ts: number) {
 /**
  * Semantic clustering, reported as a DIFF against the regex grouping.
  *
- * The regex pass stays authoritative and its counts stay exact — this panel can
+ * The regex pass stays authoritative and its counts stay exact - this panel can
  * only ever say "these rows appear to mean the same thing". Framing it as a diff
  * rather than a replacement is what makes it safe to ship: the worst case is a
  * wrong sentence inside a labelled box, never a wrong count in the table below.

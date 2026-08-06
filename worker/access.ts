@@ -5,7 +5,7 @@ import { type Ctx, isUnconfigured } from './types';
 /**
  * Verifies the Cloudflare Access JWT.
  *
- * This was hand-rolled — manual base64url decoding, a manual `crypto.subtle`
+ * This was hand-rolled - manual base64url decoding, a manual `crypto.subtle`
  * RSASSA verify, and manual `aud`/`exp` checks. It worked, and a security review
  * still found two holes in that layer. It also never checked `iss`, so a token
  * from another Cloudflare team, signed by whatever JWKS we happened to be pointed
@@ -45,12 +45,12 @@ function keySet(teamDomain: string) {
 /**
  * Is this the local Vite dev server?
  *
- * `import.meta.env.DEV` is substituted at BUILD time — true in the dev server, false in anything
+ * `import.meta.env.DEV` is substituted at BUILD time - true in the dev server, false in anything
  * `vite build` produces. It is therefore not spoofable at runtime: a deployed bundle cannot express
  * it, no matter what headers arrive. The localhost check is belt-and-braces on top.
  *
  * This replaced keying the dev bypass on the AUD placeholder. That was a good idea with one fatal
- * property — configuring Access (which you must do before deploying) also switched local dev OFF,
+ * property - configuring Access (which you must do before deploying) also switched local dev OFF,
  * so every /api route 401'd on a developer's machine and the dashboard could not be worked on at
  * all. The two concerns are separate: "is Access configured" is about production, "is this a dev
  * server" is about where the code is running.
@@ -83,7 +83,7 @@ export function readAccessToken(headerValue: string | undefined, cookie: string 
  * and logging back in still produced `iss: https://long-wildflower-f4fb…`.
  *
  * So the JWKS domain and the issuer are two different values that merely happen
- * to match on an account that has never been renamed — which is why every example
+ * to match on an account that has never been renamed - which is why every example
  * (Cloudflare's included) conflates them. ACCESS_ISSUER exists to hold them apart.
  * Defaulting to the team domain keeps the common case zero-config.
  */
@@ -96,12 +96,12 @@ export function expectedIssuer(env: { ACCESS_ISSUER?: string; ACCESS_TEAM_DOMAIN
  *
  * A token whose signature and `aud` are both good but whose `iss` is a DIFFERENT
  * cloudflareaccess.com domain is almost always the rename trap above, not an
- * attack. It does not resolve by logging out — the issuer is a property of the
+ * attack. It does not resolve by logging out - the issuer is a property of the
  * application, not the session. The fix is to set ACCESS_ISSUER, and the point of
  * this hint is that nobody else spends an hour discovering that.
  *
  * The claim is read WITHOUT verification, which is safe because it is used only to
- * write a log line. Nothing is authorised on the strength of it — the request has
+ * write a log line. Nothing is authorised on the strength of it - the request has
  * already been rejected by the time this runs.
  */
 export function staleIssuerHint(token: string, expected: string): string {
@@ -115,7 +115,7 @@ export function staleIssuerHint(token: string, expected: string): string {
     );
     const iss = String(json?.iss ?? '');
     if (iss && iss !== expected) {
-      return ` — token was issued by ${iss}, this Worker expects ${expected}. Access pins an application's issuer at creation and does NOT change it when the team is renamed, so this does not resolve by logging out. Set ACCESS_ISSUER to ${iss}.`;
+      return ` - token was issued by ${iss}, this Worker expects ${expected}. Access pins an application's issuer at creation and does NOT change it when the team is renamed, so this does not resolve by logging out. Set ACCESS_ISSUER to ${iss}.`;
     }
   } catch {
     /* a malformed token is already covered by the error above */
@@ -137,7 +137,7 @@ export const accessAuth: MiddlewareHandler<Ctx> = async (c, next) => {
     // served to anyone who found the hostname. Refuse instead.
     console.error(
       '[access] REFUSING TO SERVE: ACCESS_AUD is still the placeholder. Configure ACCESS_AUD and ' +
-        "ACCESS_TEAM_DOMAIN before deploying — serving here would expose this Worker's credentials."
+        "ACCESS_TEAM_DOMAIN before deploying - serving here would expose this Worker's credentials."
     );
     return c.json(
       {
@@ -169,7 +169,7 @@ export const accessAuth: MiddlewareHandler<Ctx> = async (c, next) => {
 
     return next();
   } catch (err) {
-    // Which claim failed is deliberately NOT reported to the caller — an unauthenticated caller
+    // Which claim failed is deliberately NOT reported to the caller - an unauthenticated caller
     // learns nothing from a 401 beyond "no". It IS logged, because a verifier that fails closed and
     // says nothing anywhere is indistinguishable from an outage, and that cost an hour once already.
     const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);

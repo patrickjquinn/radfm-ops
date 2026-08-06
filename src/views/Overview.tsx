@@ -103,7 +103,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
 
       {/*
         Two signals minimum. With one, the row below already says everything and
-        the model pads — measured, it produced "according to signal:recs-fallback,
+        the model pads - measured, it produced "according to signal:recs-fallback,
         which also reports a metric of 12%", which is the input read back. The
         narrative's whole value is the CONNECTION between signals, and one signal
         has no connections. With none, there is nothing to narrate at all.
@@ -203,7 +203,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
                     <DeployRow
                       key={v.id}
                       id={String(v.id ?? '').slice(0, 7)}
-                      msg={v.annotations?.['workers/message'] ?? v.metadata?.source ?? '—'}
+                      msg={v.annotations?.['workers/message'] ?? v.metadata?.source ?? '-'}
                       age={relAge(v.metadata?.created_on ?? v.created_on)}
                       current
                     />
@@ -224,7 +224,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
 /**
  * Honest labels. `past_plays` stores current state rather than history, so this
  * figure means "users who played a song they had not played before, or replayed
- * one" — calling it DAU would be a lie with a number attached.
+ * one" - calling it DAU would be a lie with a number attached.
  */
 function ScaleRows({ d }: { d: any }) {
   const rows: { label: string; value: number | null; note: string }[] = [
@@ -284,7 +284,7 @@ function RollbackButton({ allowed, target }: { allowed: boolean; target: string 
       aria-disabled="true"
       // Two reasons, and the operator is told which applies. Hiding the control
       // would leave them unable to tell a missing feature from a missing permission.
-      title={allowed ? 'Phase 4 — writes are not enabled yet' : 'Requires operator'}
+      title={allowed ? 'Phase 4 - writes are not enabled yet' : 'Requires operator'}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -298,7 +298,7 @@ function RollbackButton({ allowed, target }: { allowed: boolean; target: string 
         cursor: 'not-allowed'
       }}
     >
-      {allowed ? `Roll back to ${target || '—'}` : 'Roll back — requires operator'}
+      {allowed ? `Roll back to ${target || '-'}` : 'Roll back - requires operator'}
     </button>
   );
 }
@@ -414,7 +414,7 @@ function ServiceState({
 /**
  * The cron card.
  *
- * `lastRunAt: null` is NOT healthy — the backend documents it as "never observed",
+ * `lastRunAt: null` is NOT healthy - the backend documents it as "never observed",
  * and this cron is the only server-initiated revocation path. It has been silently
  * misconfigured before, so rendering null as anything reassuring would recreate
  * exactly the failure this card exists to catch.
@@ -448,7 +448,7 @@ function cronCard(cron: ReturnType<typeof useCron>) {
 /**
  * The setlist card.
  *
- * A 0/0 sample is NOT a 0% fill rate. It rendered as "0%" in red — a false zero
+ * A 0/0 sample is NOT a 0% fill rate. It rendered as "0%" in red - a false zero
  * dressed as an outage, which is the same lie as a false "unavailable" and exactly
  * what this dashboard is meant to refuse to do. No gigs in the window means there
  * is nothing to report, so it says that.
@@ -482,9 +482,9 @@ function setlistCard(setlists: ReturnType<typeof useSetlistFill>) {
 }
 
 function relAge(iso?: string) {
-  if (!iso) return '—';
+  if (!iso) return '-';
   const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms)) return '—';
+  if (!Number.isFinite(ms)) return '-';
   const h = Math.floor(ms / 3600_000);
   if (h < 1) return `${Math.max(1, Math.floor(ms / 60_000))}m`;
   if (h < 48) return `${h}h`;
@@ -496,7 +496,7 @@ function relAge(iso?: string) {
  *
  * It receives signals health.ts has ALREADY computed and writes prose about them.
  * It is never handed raw data to aggregate, because a subtly wrong number inside
- * fluent prose is far harder to catch than an obviously wrong one — and this is
+ * fluent prose is far harder to catch than an obviously wrong one - and this is
  * the tool that exists because a wrong number looked fine.
  *
  * Three properties make it safe to put at the top of the page:
@@ -506,7 +506,7 @@ function relAge(iso?: string) {
  *   2. Citations are filtered Worker-side against the ids we sent, so a
  *      fabricated source cannot render. What you see cited, we supplied.
  *   3. It degrades like any other source. When inference is down the panel says
- *      so and states plainly that nothing measured is affected — because nothing
+ *      so and states plainly that nothing measured is affected - because nothing
  *      on this page depends on it for a number.
  */
 function Narrative({ signals, verdict, hours }: { signals: Signal[]; verdict: string; hours: number }) {
@@ -533,7 +533,7 @@ function Narrative({ signals, verdict, hours }: { signals: Signal[]; verdict: st
 
   if (n.state === 'unavailable')
     return (
-      <Generated model="—">
+      <Generated model="-">
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
           <span style={{ color: C.warnText, display: 'flex', flex: 'none' }}>
             <Icon name="exclamationmark.triangle" size={13} />
@@ -550,7 +550,7 @@ function Narrative({ signals, verdict, hours }: { signals: Signal[]; verdict: st
           </span>
         </div>
         <div style={{ font: `400 13px/1.55 ${FONT.text}`, color: C.t2, maxWidth: '76ch' }}>
-          {reasonText(n.reason, n.detail)} The signals below are unaffected — they are measured, not generated.
+          {reasonText(n.reason, n.detail)} The signals below are unaffected - they are measured, not generated.
           Nothing is missing from this page except the prose.
         </div>
       </Generated>
@@ -583,7 +583,7 @@ function Narrative({ signals, verdict, hours }: { signals: Signal[]; verdict: st
         </div>
       )}
       <div style={{ font: `400 11.5px/1.55 ${FONT.text}`, color: C.t3, marginTop: 14, maxWidth: '76ch' }}>
-        Narration only. Every figure above is rendered from the signal it cites, not produced by the model — see the
+        Narration only. Every figure above is rendered from the signal it cites, not produced by the model - see the
         panels below for the measured values.
       </div>
     </Generated>

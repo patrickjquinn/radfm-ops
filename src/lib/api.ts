@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
  * `unavailable` is a first-class state, not an error to swallow. The rule that
  * makes this tool trustworthy: when we could not ask, say so. Rendering 0, or a
  * plausible-looking chart, from a source that failed is the worst thing this
- * dashboard could do — it is exactly how a total auth outage displayed as
+ * dashboard could do - it is exactly how a total auth outage displayed as
  * "0 Errors" while every user was locked out.
  */
 export type Loaded<T> =
@@ -18,14 +18,14 @@ export type Loaded<T> =
 export const reasonText = (reason: string, detail?: string) => {
   switch (reason) {
     case 'no_token':
-      return 'No Cloudflare API token on this Worker. See RUNBOOK §0.2 — this is the one blocking prerequisite.';
+      return 'No Cloudflare API token on this Worker. See RUNBOOK §0.2 - this is the one blocking prerequisite.';
     case 'bad_token':
-      return 'Cloudflare rejected the token (10000). The wrangler OAuth token does not work against api.cloudflare.com — a real scoped API token is required.';
+      return 'Cloudflare rejected the token (10000). The wrangler OAuth token does not work against api.cloudflare.com - a real scoped API token is required.';
     case 'no_backend_token':
-      return 'This panel reads /admin/* on the Rad.FM backend, which needs a Rad.FM owner token. Paste one into the "Rad.FM JWT" field at the bottom of the sidebar — it is stored in this browser and persists, so this is a one-time step. To stop needing it entirely, set the OPS_BACKEND_JWT secret on the Worker (see README § Owner token).';
+      return 'This panel reads /admin/* on the Rad.FM backend, which needs a Rad.FM owner token. Paste one into the "Rad.FM JWT" field at the bottom of the sidebar - it is stored in this browser and persists, so this is a one-time step. To stop needing it entirely, set the OPS_BACKEND_JWT secret on the Worker (see README § Owner token).';
     case 'not_found':
       // 404 on /admin/* has THREE causes and the API will not tell you which.
-      // Ordered by how likely each is to be the answer in practice — the rate
+      // Ordered by how likely each is to be the answer in practice - the rate
       // limiter leads because it is the one that makes a working page start
       // failing, which reads as a broken token and sends people down the wrong path.
       return (
@@ -49,7 +49,7 @@ const JWT_KEY = 'radfm.ops.jwt';
  *
  * sessionStorage was the safer-sounding choice and it was the wrong one: the
  * token died with every tab, so the operator re-pasted an owner credential
- * several times a day. That is not a security win — it is a reason to keep the
+ * several times a day. That is not a security win - it is a reason to keep the
  * token somewhere convenient and worse, a reason to stop using the tool.
  *
  * The threat it defended against was someone with the operator's unlocked
@@ -106,7 +106,7 @@ export type Session = {
   cfTokenPresent: boolean;
   devBackendJwt: boolean;
   ownerTokenForCaller: boolean;
-  /** The proxy is forwarding this caller's Access assertion — the primary identity path. */
+  /** The proxy is forwarding this caller's Access assertion - the primary identity path. */
   accessForwarding: boolean;
   /** Whether the Workers AI binding is present, and which text model is pinned. */
   aiEnabled: boolean;
@@ -135,11 +135,11 @@ export const useAdminMe = (enabled = true) =>
   );
 
 /**
- * Field names are the backend's, verified against src/users/routes/admin.ts —
+ * Field names are the backend's, verified against src/users/routes/admin.ts -
  * `premium`, `plays`, `liked`, NOT premiumUsers/pastPlays/likedSongs.
  *
  * Reading the wrong keys gave `undefined`, which statValue() turns into null,
- * which renders as "unavailable" — so the dashboard reported three counts as
+ * which renders as "unavailable" - so the dashboard reported three counts as
  * unreadable while the backend was returning them perfectly. A false
  * "unavailable" is the same lie as a false zero, just in the other direction,
  * and it is worse here because this tool's entire pitch is that it admits what
@@ -180,7 +180,7 @@ export const useEntitlement = (userId: string, enabled: boolean) =>
 
 /**
  * `-1` is a QUERY-FAILED SENTINEL in /admin/stats, not a count, and `premiumPct`
- * is null rather than a number derived from one. Both render as "unavailable" —
+ * is null rather than a number derived from one. Both render as "unavailable" -
  * never as 0, and never as "-1".
  */
 export const statValue = (n: number | null | undefined): number | null =>
@@ -194,7 +194,7 @@ export const useTraffic = (hours: number) =>
   );
 
 export type Fourxx = {
-  /** Exact count from an ungrouped query. `null` means unavailable — never render it as 0. */
+  /** Exact count from an ungrouped query. `null` means unavailable - never render it as 0. */
   total: number | null;
   /** How much of `total` the visible rows actually account for. */
   accounted: number;
@@ -216,7 +216,7 @@ export const useLogs = (level: 'warn' | 'error', hours: number) =>
     groups: LogGroup[] | null;
     events: any[] | null;
     retentionHours: number;
-    /** Exact count for the window. `null` means unavailable — never render as 0. */
+    /** Exact count for the window. `null` means unavailable - never render as 0. */
     total: number | null;
     /** How many events the breakdown was built from; the events view returns a sample. */
     sampled: number;
@@ -262,7 +262,7 @@ export const useVersions = () =>
  * All four shipped. The interim "route_not_built" inference has been REMOVED
  * deliberately: it turned a 404 into "the backend team has not written this yet",
  * which is now wrong and actively misleading. A 404 here means rate-limited,
- * under-privileged, or migration-missing — and misdiagnosing that is exactly the
+ * under-privileged, or migration-missing - and misdiagnosing that is exactly the
  * class of error this dashboard exists to prevent.
  */
 
@@ -272,7 +272,7 @@ export type UserMatch = { id: number; email: string | null; username: string | n
  * Numeric ids resolve directly via the viewer-level entitlement route; email and
  * RevenueCat ids go through lookup, which is **operator**.
  *
- * Prefix search over `users` is a directory walk in 20-row pages — bulk access to
+ * Prefix search over `users` is a directory walk in 20-row pages - bulk access to
  * personal data rather than dashboard reading. The role check runs before the
  * query server-side, so a viewer cannot drive it at all. The client must not even
  * ask, or a viewer gets a bare 404 and no idea why.
@@ -328,7 +328,7 @@ export type CronStatus = {
 /**
  * RevenueCat reconcile status.
  *
- * `lastRunAt: null` means NEVER OBSERVED, not healthy — the backend is explicit
+ * `lastRunAt: null` means NEVER OBSERVED, not healthy - the backend is explicit
  * about that and the distinction matters here more than most: this cron is the
  * only server-initiated revocation path, and it has been silently misconfigured
  * before. A card that renders null as "fine" would reproduce that exactly.
@@ -370,7 +370,7 @@ export const useConfig = (enabled: boolean) =>
 
 /**
  * Writing a Tier 1 value. The backend must write the `admin_audit` row in the
- * same handler that performs the write — that is the whole point of the table,
+ * same handler that performs the write - that is the whole point of the table,
  * and a client that writes the audit row separately can fail between the two.
  */
 export const useSetConfig = () => {
@@ -463,7 +463,7 @@ export const useCluster = (groups: { msg: string; count: number }[] | null, enab
  * The AI Gateway spend limit, read live.
  *
  * `limits: null` means the gateway record came back in a shape we could not
- * read — reported as unavailable, never as "no limit set". Inventing reassurance
+ * read - reported as unavailable, never as "no limit set". Inventing reassurance
  * about a safety control is the worst thing this panel could do.
  */
 export type SpendLimit = { budget: number; window: string; enabled: boolean };

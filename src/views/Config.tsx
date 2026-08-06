@@ -14,7 +14,7 @@ import * as fx from '../lib/fixtures';
  *   1. The backend serves GET /admin/config. Until it does, this view shows the
  *      code-side defaults and the design's disabled Edit control, unchanged.
  *   2. The caller is `operator` or above, resolved server-side per request.
- *   3. The backend accepts the PUT — the role check that matters is the one on
+ *   3. The backend accepts the PUT - the role check that matters is the one on
  *      that handler, not this one. What is below only decides what to render.
  *
  * The value shown says whether it came from KV or from the constant in code. A
@@ -37,7 +37,7 @@ export default function Config({ ctx }: { ctx: Ctx }) {
       <Callout tone="neutral">
         Tier 1 values read from <code style={{ font: `400 12px/1 ${FONT.mono}`, color: '#7BCFC5' }}>config:&lt;key&gt;</code>{' '}
         KV through a helper with a hard-coded default. A missing or malformed value falls back to the constant in code,
-        never to zero — a config system that fails to an empty value is worse than no config system.
+        never to zero - a config system that fails to an empty value is worse than no config system.
       </Callout>
 
       {!demo && !backendServesConfig && (
@@ -70,7 +70,7 @@ export default function Config({ ctx }: { ctx: Ctx }) {
             key={c.key}
             entry={c}
             editable={backendServesConfig && ctx.can.operate}
-            why={!backendServesConfig ? 'Phase 4 — the backend config route is not built yet' : 'Requires operator'}
+            why={!backendServesConfig ? 'Phase 4 - the backend config route is not built yet' : 'Requires operator'}
           />
         ))}
       </section>
@@ -185,7 +185,7 @@ function Row({ entry, editable, why }: { entry: ConfigEntry; editable: boolean; 
                 font: `400 10.5px/1.2 ${FONT.mono}`,
                 color: fromKv ? C.ok : 'rgba(255,255,255,0.3)'
               }}
-              title={fromKv ? `Overridden in KV; code default is ${entry.default}` : 'No KV override — this is the constant in code'}
+              title={fromKv ? `Overridden in KV; code default is ${entry.default}` : 'No KV override - this is the constant in code'}
             >
               {fromKv ? 'kv' : 'default'}
             </span>
@@ -223,20 +223,20 @@ function Row({ entry, editable, why }: { entry: ConfigEntry; editable: boolean; 
 
       {/*
         `cfg()` memoises per isolate. The writing isolate resets immediately, so
-        this page shows the new value at once — but other isolates serve the old
+        this page shows the new value at once - but other isolates serve the old
         one until their memo expires. Without saying so, an operator changes a dial
         during an incident, sees it take effect here, and concludes the backend is
         ignoring them.
       */}
       {save.isSuccess && !editing && (
         <div style={{ font: `400 11.5px/1.5 ${FONT.text}`, color: C.warnText, paddingTop: 8, maxWidth: '74ch' }}>
-          Saved. Up to 30s to go global — this page reads the isolate that just wrote, other isolates serve the previous
+          Saved. Up to 30s to go global - this page reads the isolate that just wrote, other isolates serve the previous
           value until their cache expires. It is not being ignored.
         </div>
       )}
       {fromKv && entry.default !== entry.value && !editing && (
         <div style={{ font: `400 11px/1.5 ${FONT.mono}`, color: C.t3, paddingTop: 6 }}>
-          code default {String(entry.default)} — this override is what the Worker is using
+          code default {String(entry.default)} - this override is what the Worker is using
         </div>
       )}
     </div>
@@ -309,7 +309,7 @@ function Inference() {
    *   unavailable      → "cannot verify", which is NOT the same as "no limit"
    *
    * The third is the one that matters. This row used to be the literal string
-   * "not set", which would have kept saying that after a limit was configured —
+   * "not set", which would have kept saying that after a limit was configured -
    * and, worse, would say the same thing whether or not anyone had checked.
    */
   const spend: { value: string; tone: 'ok' | 'plain' | 'warn'; note?: string } =
@@ -345,13 +345,13 @@ function Inference() {
     },
     {
       key: 'AI_BINDING',
-      note: 'grants inference, not data access — which is why it does not breach the no-D1-binding rule',
+      note: 'grants inference, not data access - which is why it does not breach the no-D1-binding rule',
       value: enabled == null ? '\u2014' : enabled ? 'bound' : 'absent',
       tone: enabled ? 'ok' : 'warn'
     },
     {
       key: 'AI_GATEWAY',
-      note: 'all inference routes through the gateway — a limit set on it applies to nothing otherwise',
+      note: 'all inference routes through the gateway - a limit set on it applies to nothing otherwise',
       value: gw.state === 'ok' ? gw.data.gateway : 'default',
       tone: 'plain'
     },
@@ -381,9 +381,9 @@ function Inference() {
       <div style={{ padding: '11px 0 4px' }}>
         <Prose>
           The model id is a Tier 1 value because models get deprecated on Cloudflare's cadence, not ours. The spend
-          limit exists so an unbounded loop against an inference endpoint fails closed — not because cost is expected;
+          limit exists so an unbounded loop against an inference endpoint fails closed - not because cost is expected;
           at these volumes the generated panels run inside the free daily allocation. Every row here is read from the
-          running Worker or from the gateway itself, never asserted — a panel that claims a safety control is on
+          running Worker or from the gateway itself, never asserted - a panel that claims a safety control is on
           without checking would go on saying so after someone turned it off.
         </Prose>
       </div>

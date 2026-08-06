@@ -18,18 +18,18 @@ import type { ViewId } from '../App';
  *
  * This is centralised rather than computed twice on purpose. Two counts of the
  * same thing that disagree on the same screen is precisely the failure this tool
- * exists to prevent — a dashboard that contradicts itself teaches an operator to
+ * exists to prevent - a dashboard that contradicts itself teaches an operator to
  * trust none of it.
  */
 
 export type Badge = { text: string; kind: 'bad' | 'warn' | 'plain' };
 
 /**
- * Thresholds, calibrated against the real baselines measured 5 Aug 2026 — not
+ * Thresholds, calibrated against the real baselines measured 5 Aug 2026 - not
  * round numbers picked because they look tidy.
  *
  * The DJ guard rejects roughly 14% of takes when everything is working (264 `ok`
- * of 307 over 7 days). A 10% threshold — the obvious-looking choice — would have
+ * of 307 over 7 days). A 10% threshold - the obvious-looking choice - would have
  * fired permanently on a healthy system, and a dashboard that always shows a
  * warning has trained you to ignore it by the second day.
  *
@@ -49,7 +49,7 @@ const MIN_SAMPLE = 30;
  *
  * Consistently, before and after any deploy. Against an 86% blended baseline a
  * short overnight window sits near 22% non-ok and would breach the 25% line most
- * nights — the dashboard would cry wolf every night and be ignored by the second
+ * nights - the dashboard would cry wolf every night and be ignored by the second
  * week. They nearly reported an overnight figure as a regression themselves before
  * checking like-for-like.
  *
@@ -64,7 +64,7 @@ export type Signal = {
    *
    * Titles interpolate live values ("3 requests returned zero tracks"), so they
    * change as the system changes. The narrative cites these ids and the Worker
-   * drops any citation naming an id it was not given — that check is only worth
+   * drops any citation naming an id it was not given - that check is only worth
    * anything if the id is stable across renders.
    */
   id: string;
@@ -141,7 +141,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     });
   }
 
-  // The owner token cannot renew itself — the Access session does, this does not.
+  // The owner token cannot renew itself - the Access session does, this does not.
   // Warn while there is still time to mint another, rather than after half the
   // dashboard has silently gone to "unavailable".
   if (expiringInDays != null && expiringInDays <= 14)
@@ -152,7 +152,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
           ? 'Owner token has expired'
           : `Owner token expires in ${expiringInDays} day${expiringInDays === 1 ? '' : 's'}`,
       evidence:
-        'Every /admin/* panel goes to "unavailable" when it lapses. Cloudflare Access cannot refresh it — it is a Rad.FM JWT signed with the backend\u2019s secret, which Cloudflare does not hold. Mint a new one (README § Owner token), or land the Access-JWT change and retire it.',
+        'Every /admin/* panel goes to "unavailable" when it lapses. Cloudflare Access cannot refresh it - it is a Rad.FM JWT signed with the backend\u2019s secret, which Cloudflare does not hold. Mint a new one (README § Owner token), or land the Access-JWT change and retire it.',
       metric: expiringInDays <= 0 ? 'expired' : `${expiringInDays}d`,
       source: 'ops Worker',
       sev: expiringInDays <= 3 ? 'bad' : 'warn',
@@ -165,7 +165,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       id: 'signal:ae-unverified',
       title: 'Analytics Engine returned no datapoints',
       evidence:
-        'Ingestion lags — a datapoint can take over a minute to become queryable — and writes are fire-and-forget, so one empty query is not proof a code path is cold. Check the binding is deployed before concluding anything.',
+        'Ingestion lags - a datapoint can take over a minute to become queryable - and writes are fire-and-forget, so one empty query is not proof a code path is cold. Check the binding is deployed before concluding anything.',
       metric: 'unverified',
       source: 'day-one check',
       sev: 'info',
@@ -178,7 +178,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   /**
    * The exact count, NOT the sum of the visible groups.
    *
-   * The events view returns a sample, and summing it under-reported badly — 12h
+   * The events view returns a sample, and summing it under-reported badly - 12h
    * showed more warnings than 24h on the same instant. The badge and the >500
    * threshold both hang off this number, so it has to be the real one.
    */
@@ -200,7 +200,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     });
 
   // Degraded is the seatbelt; zero tracks is the crash. A request that returns no
-  // tracks at all is a dead player, and those are NOT flagged degraded — three of
+  // tracks at all is a dead player, and those are NOT flagged degraded - three of
   // them sat underneath a "19 degraded" headline unnoticed. Ranked above the
   // fallback-rate signal because it is strictly worse.
   if (recsZero != null && recsZero > 0)
@@ -208,7 +208,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       id: 'signal:recs-zero-tracks',
       title: `${recsZero} request${recsZero === 1 ? '' : 's'} returned zero tracks`,
       evidence:
-        'A dead player, not a degraded one. These do not show up as "degraded" — the fallback did not rescue them, it returned nothing. Check poolSource for the cause.',
+        'A dead player, not a degraded one. These do not show up as "degraded" - the fallback did not rescue them, it returned nothing. Check poolSource for the cause.',
       metric: String(recsZero),
       source: 'Analytics Engine',
       sev: 'bad',
@@ -239,7 +239,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
 
   // Baseline is 75%, measured on a live 100-event London listing. It sat around
   // 65% while looking healthy, because the failures logged as warnings and
-  // warnings are not errors — this is the check that would have caught it.
+  // warnings are not errors - this is the check that would have caught it.
   const fillRate = setlists.state === 'ok' ? setlists.data.fillRate : null;
   if (fillRate != null && fillRate < 0.7)
     signals.unshift({
@@ -293,28 +293,42 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         // Never "Healthy" on the strength of sources we could not reach. That is a
         // different claim, and only one of them is supported by the data.
         tone: bad ? 'bad' : 'warn',
-        title: `Unverified — ${unreadable.length} source${unreadable.length === 1 ? '' : 's'} could not be read`,
+        title: `Unverified - ${unreadable.length} source${unreadable.length === 1 ? '' : 's'} could not be read`,
         sub: 'This is not a claim that anything is healthy. Nothing below has been confirmed against the live system.',
         stats: [
-          { value: fourxxTotal != null ? compact(fourxxTotal) : '—', label: '4xx', tone: 'dim' },
-          { value: '—', label: '5xx', tone: 'dim' },
+          { value: fourxxTotal != null ? compact(fourxxTotal) : '-', label: '4xx', tone: 'dim' },
+          { value: '-', label: '5xx', tone: 'dim' },
           { value: String(unreadable.length), label: 'sources down', tone: 'bad' }
         ]
       }
     : {
-        tone: bad ? 'bad' : open.length ? 'warn' : 'ok',
+        /**
+         * Binary: failing, or not. There is deliberately no amber verdict.
+         *
+         * This read `open.length ? 'warn' : 'ok'`, which rendered the word
+         * "Healthy" in amber whenever any signal was open. The word claimed one
+         * thing and the colour claimed another, on the same line, and colour in
+         * this product means state - so the panel was contradicting itself in
+         * the one place that is supposed to settle the question.
+         *
+         * The design is explicit that this is two-valued (`incident ? bad : ok`),
+         * and it is right: the signals below carry their own severity, so amber
+         * belongs on them. The verdict answers "is something failing", and an
+         * open warning is not a failure. If it were, it would be a `bad` signal.
+         */
+        tone: bad ? 'bad' : 'ok',
         title: bad
-          ? `Degraded — ${open.length} signal${open.length === 1 ? '' : 's'} open`
+          ? `Degraded - ${open.length} signal${open.length === 1 ? '' : 's'} open`
           : open.length
-            ? `Healthy — ${open.length} signal${open.length === 1 ? '' : 's'} open`
-            : 'Healthy — no signals open',
+            ? `Healthy - ${open.length} signal${open.length === 1 ? '' : 's'} open`
+            : 'Healthy - no signals open',
         sub: open.length
           ? 'Every source answered. The signals below are what they said.'
           : 'Every source read cleanly and none of them is reporting a problem.',
         stats: [
-          { value: fourxxTotal != null ? compact(fourxxTotal) : '—', label: '4xx', tone: fourxxTotal && fourxxTotal > 1000 ? 'bad' : 'plain' },
+          { value: fourxxTotal != null ? compact(fourxxTotal) : '-', label: '4xx', tone: fourxxTotal && fourxxTotal > 1000 ? 'bad' : 'plain' },
           { value: '0', label: '5xx', tone: 'plain' },
-          { value: warnTotal != null ? compact(warnTotal) : '—', label: 'warnings', tone: 'dim' }
+          { value: warnTotal != null ? compact(warnTotal) : '-', label: 'warnings', tone: 'dim' }
         ]
       };
 
@@ -327,7 +341,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
  * Keyed on the stable id rather than the title, because titles interpolate live
  * values and two renderings of the same signal can differ in text while being the
  * same claim. This exists because a copy-pasted block emitted one twice, and
- * because the cost of that bug is not the duplicate row — it is that the count
+ * because the cost of that bug is not the duplicate row - it is that the count
  * beside it stops matching.
  */
 export function dedupeSignals(signals: Signal[]): Signal[] {
@@ -343,7 +357,7 @@ function demoHealth(demo: Scenario): Health {
       demo === 'incident'
         ? {
             tone: 'bad',
-            title: 'Degraded — 3 signals open',
+            title: 'Degraded - 3 signals open',
             sub: 'Auth refresh is failing at scale and the platform error metric does not show it.',
             stats: [
               { value: '2.17%', label: '4xx rate', tone: 'bad' },
@@ -353,7 +367,7 @@ function demoHealth(demo: Scenario): Health {
           }
         : {
             tone: 'ok',
-            title: 'Healthy — 1 signal open',
+            title: 'Healthy - 1 signal open',
             sub: 'Nothing failing. One source has never been verified, which is not the same as healthy.',
             stats: [
               { value: '0.26%', label: '4xx rate', tone: 'plain' },
@@ -376,13 +390,13 @@ function demoHealth(demo: Scenario): Health {
 
 const reasonShort = (reason: string) =>
   reason === 'no_token'
-    ? 'No Cloudflare API token on this Worker — RUNBOOK §0.2.'
+    ? 'No Cloudflare API token on this Worker - RUNBOOK §0.2.'
     : reason === 'bad_token'
       ? 'Cloudflare rejected the token (10000). The wrangler OAuth token does not work against this API.'
       : reason === 'no_backend_token'
         ? 'No Rad.FM JWT supplied, so /admin/* cannot be read.'
         : reason === 'not_found'
-          ? 'Backend returned 404 — the admin rate limiter, a role below the route, or migration 0003.'
+          ? 'Backend returned 404 - the admin rate limiter, a role below the route, or migration 0003.'
           : 'The source returned an error.';
 
 /** Null below MIN_SAMPLE: too few events to mean anything, which is not the same as fine. */

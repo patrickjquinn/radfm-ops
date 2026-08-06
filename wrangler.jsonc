@@ -7,7 +7,7 @@
 
   // Deliberately false. The backend has workers_dev:true, which means
   // rad-fm-backend.veme.workers.dev is publicly reachable and bypasses any
-  // protection on the custom domain. Do not repeat that here — a *.workers.dev
+  // protection on the custom domain. Do not repeat that here - a *.workers.dev
   // URL is not covered by the Access policy on ops.rad-fm.com.
   "workers_dev": false,
 
@@ -21,7 +21,7 @@
 
   "observability": { "enabled": true, "head_sampling_rate": 1 },
 
-  // Workers AI. Inference only — this grants no data access, which is why it does
+  // Workers AI. Inference only - this grants no data access, which is why it does
   // not weaken the "no D1 binding on the ops Worker" invariant.
   "ai": { "binding": "AI" },
 
@@ -40,7 +40,7 @@
     // finish_reason: length, and took ~40s doing it. On a page whose promise is a
     // ten-second answer, reasoning is pure cost in both latency and tokens.
     //
-    // 26,668 neurons/M in and 204,805/M out — about 73 neurons per narration, so
+    // 26,668 neurons/M in and 204,805/M out - about 73 neurons per narration, so
     // roughly 137 a day inside the free allocation. More per call than glm, and
     // the only one of the two that produces a narration at all.
     "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
@@ -53,12 +53,12 @@
     // Emails == patrick.jm.quinn@gmail.com. Both values are identifiers, not
     // secrets, so they belong in version control where a change is reviewable.
     //
-    // Setting a real AUD here also closes the dev bypass in worker/access.ts —
+    // Setting a real AUD here also closes the dev bypass in worker/access.ts -
     // that is deliberate, and it is why these two must never be reverted to the
     // placeholder on a deployed Worker.
     // Renamed from the auto-generated long-wildflower-f4fb on 5 Aug 2026. The old
     // domain 404s immediately once the team is renamed, and this value is what the
-    // Worker fetches the JWKS from — so a rename and a redeploy are one operation,
+    // Worker fetches the JWKS from - so a rename and a redeploy are one operation,
     // not two. Between them, every /api route 401s.
     "ACCESS_TEAM_DOMAIN": "radfm.cloudflareaccess.com",
     "ACCESS_AUD": "b01e1140660d0a36b16f6e988774ac57e1c456bac1d36cb79108cee28450fe88",
@@ -66,7 +66,7 @@
     // NOT the same as ACCESS_TEAM_DOMAIN, and this is the trap. Access pins an
     // application's `iss` at creation and does NOT update it when the team is
     // renamed. This app was created under long-wildflower-f4fb, so it still issues
-    // tokens with that issuer even though the team is now `radfm` — verified by
+    // tokens with that issuer even though the team is now `radfm` - verified by
     // renaming, logging out, logging back in, and reading the claim. The JWKS is
     // fetched from ACCESS_TEAM_DOMAIN; the issuer is checked against this.
     "ACCESS_ISSUER": "https://long-wildflower-f4fb.cloudflareaccess.com"
@@ -80,7 +80,7 @@
   // live next to the code that already understands them.
   //
   // Secrets (wrangler secret put):
-  //   CLOUDFLARE_API_TOKEN  — scoped, mostly read-only. See .dev.vars.example.
+  //   CLOUDFLARE_API_TOKEN  - scoped, mostly read-only. See .dev.vars.example.
   //
   // Never add: JWT_SECRET, OPENAI_API_KEY, APPLE_MUSIC_DEV_TOKEN, POSTMARK_TOKEN,
   // GROQ_API_KEY. Under this architecture the ops Worker has no use for any of them,

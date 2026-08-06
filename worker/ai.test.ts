@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  asciiPunctuation,
   contentOf,
   cosine,
   findMerges,
@@ -14,7 +15,7 @@ import {
 /**
  * Redaction is the control that keeps personal data out of a third party's
  * infrastructure. Cloudflare states it does not train on customer content, but
- * retention is not documented — so anything sent must be assumed to persist
+ * retention is not documented - so anything sent must be assumed to persist
  * somewhere we cannot audit.
  *
  * These tests exist because this cannot be retrofitted. Once an email has been
@@ -120,7 +121,7 @@ describe('cosine', () => {
 
 /**
  * Clustering may only ever change GROUPING. The totals it reports are plain sums
- * over counts the regex pass already established — arithmetic done in code, never
+ * over counts the regex pass already established - arithmetic done in code, never
  * by the model.
  */
 describe('findMerges', () => {
@@ -145,7 +146,7 @@ describe('findMerges', () => {
     expect(merges[0].members).not.toContain('something entirely unrelated');
   });
 
-  it('sums the regex pass counts exactly — the model contributes grouping only', () => {
+  it('sums the regex pass counts exactly - the model contributes grouping only', () => {
     expect(findMerges(groups, vectors, 0.86)[0].total).toBe(900 + 400 + 156);
   });
 
@@ -176,7 +177,7 @@ describe('findMerges', () => {
  * both return an OpenAI `chat.completion` object.
  *
  * Reading only `.response` therefore worked for one model and returned undefined
- * for the pinned one — the narrative panel failed for a whole deploy cycle
+ * for the pinned one - the narrative panel failed for a whole deploy cycle
  * because of it. The model id is a Tier 1 value expected to change without a code
  * release, so covering both shapes is not defensive programming, it is the
  * contract.
@@ -221,7 +222,7 @@ describe('safeParse', () => {
 /**
  * The shape matrix, measured live rather than assumed. Each row here cost a
  * deploy cycle to discover, and the model id is a Tier 1 value that can change
- * without a code release — so this is the contract, not belt-and-braces.
+ * without a code release - so this is the contract, not belt-and-braces.
  */
 describe('payloadOf', () => {
   it('takes the parsed object when response_format succeeded', () => {
@@ -309,5 +310,36 @@ describe('stripBanned', () => {
     // declaring an overall state. This is the boundary case worth pinning down.
     const s = 'The orchestrator degraded gracefully, so nothing threw.';
     expect(stripBanned(s)).toBe(s);
+  });
+});
+
+/**
+ * The model's prose renders beside copy we control, and models reach for em
+ * dashes and smart quotes constantly. Asking in the prompt is not enough, for
+ * the same reason stripBanned exists.
+ */
+describe('asciiPunctuation', () => {
+  it('replaces em and en dashes with a hyphen', () => {
+    expect(asciiPunctuation('4xx is elevated — nothing threw')).toBe('4xx is elevated - nothing threw');
+    expect(asciiPunctuation('12–15%')).toBe('12-15%');
+  });
+
+  it('replaces smart quotes and ellipsis', () => {
+    expect(asciiPunctuation('the “fallback” path')).toBe('the "fallback" path');
+    expect(asciiPunctuation("it’s down")).toBe("it's down");
+    expect(asciiPunctuation('wait…')).toBe('wait...');
+  });
+
+  it('leaves plain ASCII untouched', () => {
+    const s = 'Both signals trace to the same upstream - check poolSource.';
+    expect(asciiPunctuation(s)).toBe(s);
+  });
+});
+
+describe('stripBanned normalises punctuation as it filters', () => {
+  it('returns ASCII even when nothing is stripped', () => {
+    expect(stripBanned('Fallback rose — the pool came back empty.')).toBe(
+      'Fallback rose - the pool came back empty.'
+    );
   });
 });

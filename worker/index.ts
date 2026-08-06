@@ -38,7 +38,7 @@ app.get('/api/session', (c) =>
     /**
      * Whether this request carries an Access assertion the proxy will forward.
      *
-     * This is now the PRIMARY way identity reaches /admin/* — the hand-minted
+     * This is now the PRIMARY way identity reaches /admin/* - the hand-minted
      * bearer is gone. Without reporting it, the client gates /admin/me on a token
      * that no longer exists, so the role never resolves: every /admin/* panel
      * renders fine while the sidebar says NO ROLE and asks for a credential the
@@ -61,7 +61,7 @@ app.get('/api/session', (c) =>
      *
      * The Access session renews itself; this token cannot. It is a Rad.FM JWT
      * signed with the backend's JWT_SECRET, and Cloudflare has no way to mint or
-     * refresh one — which is the whole reason it has a fixed lifetime. Without
+     * refresh one - which is the whole reason it has a fixed lifetime. Without
      * this figure the first symptom of expiry is half the dashboard going dark
      * for no stated reason, which is the failure mode this tool exists to avoid.
      */

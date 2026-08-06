@@ -7,12 +7,12 @@ import { dedupeSignals, type Signal } from './health';
  *
  * The payloads below are recorded from the LIVE handlers in
  * `rad-fm-backend/src/users/routes/admin.ts`. If the backend renames a field,
- * these fail — which is the entire point.
+ * these fail - which is the entire point.
  *
  * The bug this guards against shipped to production: the client read
  * `premiumUsers`, `pastPlays` and `likedSongs`; the handler returns `premium`,
  * `plays` and `liked`. Missing fields came back `undefined`, statValue turned
- * `undefined` into null, and null renders as "unavailable" — so the dashboard
+ * `undefined` into null, and null renders as "unavailable" - so the dashboard
  * reported three counts as unreadable while the backend returned them perfectly.
  *
  * A false "unavailable" is the same class of lie as a false zero, and it is worse
@@ -40,7 +40,7 @@ const ENTITLEMENT = {
   local: { isPremium: true, grantedAt: '2026-08-05 16:14:51' },
   meta: { user_id: 3, premium_since: null, last_source: 'api', rc_subscriber_id: '3', app_id: 'app3e6d845aab' },
   audit: [{ created_at: '2026-08-05', source: 'api', entitlement_id: 'Rad.FM+' }],
-  note: 'local is a CACHE of RevenueCat, not the source of truth — cross-check before acting'
+  note: 'local is a CACHE of RevenueCat, not the source of truth - cross-check before acting'
 };
 
 /** Exactly what GET /admin/audit returns. */
@@ -70,7 +70,7 @@ describe('/admin/stats contract', () => {
       activeUsers7d: statValue(STATS.activeUsers7d)
     };
     for (const [field, value] of Object.entries(read)) {
-      expect(value, `${field} read as null — the panel would render "unavailable"`).not.toBeNull();
+      expect(value, `${field} read as null - the panel would render "unavailable"`).not.toBeNull();
     }
   });
 
@@ -96,7 +96,7 @@ describe('/admin/users/:id/entitlement contract', () => {
     expect(ENTITLEMENT.local.isPremium).toBe(true);
   });
 
-  it('returns no RevenueCat side yet — the panel must not claim a cross-check', () => {
+  it('returns no RevenueCat side yet - the panel must not claim a cross-check', () => {
     // When the backend adds this, the panel flips itself to In agreement / Drift
     // with no frontend change. Until then "Not cross-checked" is the honest label.
     expect(ENTITLEMENT).not.toHaveProperty('revenueCat');
@@ -112,7 +112,7 @@ describe('/admin/users/:id/entitlement contract', () => {
 describe('/admin/audit contract', () => {
   it('rows are under entries, with actor_email', () => {
     // Reading `rows` or `audit` here returned [], which rendered as "no admin
-    // actions recorded" — the most misleading thing an audit table can say.
+    // actions recorded" - the most misleading thing an audit table can say.
     expect(AUDIT).toHaveProperty('entries');
     expect(AUDIT.entries[0]).toHaveProperty('actor_email');
     expect(AUDIT.entries[0]).not.toHaveProperty('actor_user_id');
@@ -129,7 +129,7 @@ describe('reasonText', () => {
 
   it('does not describe a missing route as a permissions problem', () => {
     // The interim "route_not_built" inference was removed once the routes shipped:
-    // a 404 now means limiter, role, or migration — never "not written yet".
+    // a 404 now means limiter, role, or migration - never "not written yet".
     expect(reasonText('not_found')).not.toMatch(/not been built/i);
   });
 
@@ -143,7 +143,7 @@ describe('reasonText', () => {
  *
  * A duplicated signal block once pushed the same signal twice and did it after
  * the overview badge had been computed, so the badge read 2, the header read 3,
- * and the list showed the same row twice — on the same screen, at the same time.
+ * and the list showed the same row twice - on the same screen, at the same time.
  * That is the exact failure this module was centralised to prevent.
  */
 describe('dedupeSignals', () => {
@@ -173,7 +173,7 @@ describe('dedupeSignals', () => {
   /**
    * Titles interpolate live values, so the same signal can render as different
    * text between passes. Keying on the title would let that slip through as two
-   * rows — which is the failure, not the cosmetic detail.
+   * rows - which is the failure, not the cosmetic detail.
    */
   it('keys on the stable id, not the interpolated title', () => {
     const a: Signal = { ...sig('3 requests returned zero tracks'), id: 'signal:recs-zero-tracks' };

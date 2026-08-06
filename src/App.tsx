@@ -28,7 +28,7 @@ const TITLES: Record<ViewId, [string, string]> = {
   rad: ['Rad', 'DJ line quality and the upstream providers behind it.'],
   recs: ['Recommendations', 'Pool health and fallback rate. Degradation here is silent by design.'],
   users: ['Users and entitlement', 'Local state and RevenueCat shown side by side. Disagreement is the bug returning.'],
-  stations: ['Stations', 'A content browser, not a leaderboard — every station is user-generated and subscriber counts are flat.'],
+  stations: ['Stations', 'A content browser, not a leaderboard - every station is user-generated and subscriber counts are flat.'],
   config: ['Config', 'What can be changed at runtime, what must go through a PR, and what is deliberately absent.'],
   audit: ['Audit', 'Append-only record of every admin action.']
 };
@@ -88,7 +88,7 @@ export default function App() {
   /**
    * Can the Worker reach /admin/* as this caller, by any route?
    *
-   * Access forwarding leads, because it is now the ONLY route in production — the
+   * Access forwarding leads, because it is now the ONLY route in production - the
    * hand-minted owner token has been deleted. When this was gated on a bearer
    * alone, deleting that bearer left every /admin/* panel rendering correctly
    * while the sidebar read NO ROLE and asked for a credential that is no longer
@@ -104,7 +104,7 @@ export default function App() {
   const me = useAdminMe(!demo && hasBackendToken);
 
   // Relative age only. If this interval never runs the label stays at its
-  // initial value, which is visible and correct-at-load — it never blanks.
+  // initial value, which is visible and correct-at-load - it never blanks.
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 5000);
     return () => clearInterval(t);
@@ -121,7 +121,7 @@ export default function App() {
   };
 
   /**
-   * Shaped from `can`, exactly as /admin/me returns it — and never from a role
+   * Shaped from `can`, exactly as /admin/me returns it - and never from a role
    * baked into a token, because tokens outlive grants. In demo mode the role is
    * owner so every state is reachable for review.
    */
@@ -133,9 +133,9 @@ export default function App() {
         : { read: false, operate: false, administer: false };
 
   const role = demo ? 'owner' : me.state === 'ok' ? me.data.role : null;
-  const email = demo ? 'patrick.jm.quinn@gmail.com' : session.state === 'ok' ? session.data.email : '—';
+  const email = demo ? 'patrick.jm.quinn@gmail.com' : session.state === 'ok' ? session.data.email : '-';
 
-  // Observability retains 3 days — surfaced rather than silently truncated.
+  // Observability retains 3 days - surfaced rather than silently truncated.
   const rangeExceedsRetention = range === '7d';
 
   const ownerTokenExpiresInDays =
@@ -303,7 +303,7 @@ export default function App() {
           </div>
 
           {/*
-            Not in the prototype, and needed: there is no separate admin login —
+            Not in the prototype, and needed: there is no separate admin login -
             "reuse the existing admin" resolved to reusing the existing user auth,
             so the dashboard carries the operator's own Rad.FM JWT. It persists in
             localStorage; see lib/api.ts for why that beat sessionStorage.
@@ -449,7 +449,7 @@ export default function App() {
                 <Icon name="exclamationmark.triangle" size={13} />
               </span>
               <span style={{ font: `400 12px/1.45 ${FONT.text}`, color: C.warnText }}>
-                Workers Observability retains 3 days. Log panels below are capped at 3d regardless of the range selected —
+                Workers Observability retains 3 days. Log panels below are capped at 3d regardless of the range selected -
                 anything longer needs a rollup into Analytics Engine or D1.
               </span>
             </div>
@@ -465,7 +465,7 @@ export default function App() {
                 color: C.warnText
               }}
             >
-              Demo data — every number on this page is a fixture, not the live system.{' '}
+              Demo data - every number on this page is a fixture, not the live system.{' '}
               <a href={window.location.pathname}>Switch to live</a>
             </div>
           )}
@@ -499,7 +499,7 @@ export default function App() {
           <span style={{ flex: 1 }} />
           <span style={{ font: `400 11px/1.5 ${FONT.mono}`, color: C.t3 }}>
             {session.state === 'ok' && !session.data.accessConfigured
-              ? 'Access NOT configured — dev bypass active'
+              ? 'Access NOT configured - dev bypass active'
               : 'Access SSO + admin_users role check'}
           </span>
         </footer>

@@ -1,4 +1,4 @@
-# Security review — admin surface
+# Security review - admin surface
 
 Adversarial review of the `/admin/*` backend surface, 5 August 2026. Attacks were run against
 **production**, not a local stub, because the question was "does the deployed thing hold", not "does
@@ -7,8 +7,8 @@ the code look right".
 I wrote this code, so treat this as a self-review with the bias that implies. Everything below is
 reproducible: the attack script is described inline.
 
-**Result: 5 issues found, 5 fixed and re-verified — including §5 in the ops Worker, which was the
-most serious. 1 accepted risk was additionally closed on request (§4.1 — lookup raised to
+**Result: 5 issues found, 5 fixed and re-verified - including §5 in the ops Worker, which was the
+most serious. 1 accepted risk was additionally closed on request (§4.1 - lookup raised to
 `operator`). Nothing in this document is outstanding.**
 
 ---
@@ -37,7 +37,7 @@ rate limiter. 200 on a forged credential counted as a breach.
 
 ## 2. Issues found and fixed
 
-### 2.1 A token with no `exp` never expired — HIGH
+### 2.1 A token with no `exp` never expired - HIGH
 
 `if (payload?.exp && now > payload.exp) return null` tests `exp` for truthiness before comparing it.
 A validly-signed token that simply omits `exp` skips the check entirely and is accepted **forever**.
@@ -46,17 +46,17 @@ Not exploitable today: the issuer always sets `exp`, so no such token can be obt
 normal path. But this is admin authorization, and "our issuer currently always does X" is a property
 that changes without anyone noticing. `exp` is now required and must be a finite number.
 
-### 2.2 `userId` resolved through `Number()` coercion — LOW
+### 2.2 `userId` resolved through `Number()` coercion - LOW
 
 `Number([3])` is `3`. `Number("3")` is `3`. So an array or a numeric string in the `userId` claim
-resolved to a real user. Again only reachable inside a token we signed, so not exploitable — but
+resolved to a real user. Again only reachable inside a token we signed, so not exploitable - but
 identity resolution is the wrong place for JavaScript coercion rules.
 
 Now shape-checked: a number must be an integer, a string must be all digits. Numeric strings are
 still accepted deliberately, so a legacy token carrying `"3"` cannot lock a real admin out of the
 tool they need during an incident.
 
-### 2.3 `/admin/*` was not rate limited in practice — MEDIUM
+### 2.3 `/admin/*` was not rate limited in practice - MEDIUM
 
 Measured, not assumed:
 
@@ -77,7 +77,7 @@ dedicated per-IP bucket in front of the role check.
 > is being rate limited sees `Not found` and will reasonably assume their token is wrong. If admin
 > pages start 404ing for someone who was working a minute ago, suspect the limiter before the token.
 
-### 2.4 The setlist metric reported 24% against a true 75% — MEDIUM (correctness)
+### 2.4 The setlist metric reported 24% against a true 75% - MEDIUM (correctness)
 
 The first implementation counted every element of every cached array as an event.
 
@@ -86,7 +86,7 @@ The first implementation counted every element of every cached array as an event
 being counted as a gig with no setlist, and the denominator was ~3× too large.
 
 Had this shipped, the panel would have read 24% against your stated 0.75 baseline, tripped the 0.70
-signal permanently, and been dismissed as broken — which is precisely the "alarm that is always on"
+signal permanently, and been dismissed as broken - which is precisely the "alarm that is always on"
 failure mode that lets a real regression hide.
 
 Now filtered on both key shape (listings have no `prefix:`) and value shape (an element has an
@@ -104,7 +104,7 @@ consistent with the 0.75 London baseline you measured.
   `__proto__` all 404 on write. Recommendation weights and prompt pools are not reachable from a web
   form, by construction rather than by convention.
 - **Bounds are enforced on read as well as write.** A value edited straight into the KV dashboard, or
-  written before a bound was tightened, still cannot take effect — `cfg()` re-validates and falls back
+  written before a bound was tightened, still cannot take effect - `cfg()` re-validates and falls back
   to the compiled-in default.
 - **Config fails to the default, never to zero.** Tested against empty string, whitespace, `NaN`,
   `Infinity`, `null`, `{}`, negatives and zero, for every key. `MAX_OTP_ATTEMPTS = 0` would lock every
@@ -112,33 +112,33 @@ consistent with the 0.75 London baseline you measured.
 - **Audit is written in the same handler as the write**, including rejections. "Who kept trying to set
   `MAX_OTP_ATTEMPTS` to 0" is answerable.
 - **`LIKE` metacharacters are escaped** in both search endpoints, with `ESCAPE` declared. Not SQL
-  injection — the value is bound — but `%` and `_` are wildcards *inside the pattern*, so an
+  injection - the value is bound - but `%` and `_` are wildcards *inside the pattern*, so an
   unescaped `%` turns an email lookup into a full directory dump.
 
 ---
 
-## 4. Accepted risks — deliberate, and yours to overrule
+## 4. Accepted risks - deliberate, and yours to overrule
 
-1. ~~**`viewer` can enumerate emails.**~~ **RESOLVED — `/admin/users/lookup` is now `operator`.**
+1. ~~**`viewer` can enumerate emails.**~~ **RESOLVED - `/admin/users/lookup` is now `operator`.**
    Prefix search over `users` is a directory walk in 20-row pages, which is bulk access to personal
    data rather than dashboard reading. The role check runs *before* the query, so a viewer cannot
-   drive the lookup at all, not merely be denied its results — there is a test asserting no SQL is
+   drive the lookup at all, not merely be denied its results - there is a test asserting no SQL is
    issued. Still bounded at 20 rows, still rate limited, substring search still not offered.
    `/admin/users/:id/entitlement` stays viewer-readable: resolving ONE user you already have an id
-   for is support work; enumerating the directory is not. **Requires a client change — see
+   for is support work; enumerating the directory is not. **Requires a client change - see
    README §3a.**
 2. **Config changes take up to 30 seconds to be globally visible.** `cfg()` memoises per isolate. The
    writing isolate resets its cache immediately, so the dashboard shows the new value at once, but
    other isolates serve the old one until their memo expires. **The UI should say this**, or an
    operator will change a dial during an incident, see it take effect in the dashboard, and conclude
    the backend is ignoring them.
-3. **`DEV_TKN_KEY` still works, and CANNOT yet be removed — I was wrong about this.** I previously
+3. **`DEV_TKN_KEY` still works, and CANNOT yet be removed - I was wrong about this.** I previously
    described it as a dev key retirable by deleting one branch. It is not: the shipped iOS binary
    hardcodes it and sends it as `X-API-Key` to `GET /other/dev-token`, which returns the Apple Music
    developer token. Deleting the branch would have broken every installed copy of the app.
 
-   That also makes the endpoint effectively public — a constant compiled into an IPA is recoverable
-   with `strings` — while what it hands out is the *shared* developer token whose rate limit already
+   That also makes the endpoint effectively public - a constant compiled into an IPA is recoverable
+   with `strings` - while what it hands out is the *shared* developer token whose rate limit already
    causes 429 bursts for real listeners. It now additionally accepts a real Rad.FM JWT and is rate
    limited per IP; once iOS ships a build using the JWT, the legacy branch goes and the shared secret
    stops existing. `[dev-token] issued auth=legacy-key` in the logs is the signal.
@@ -150,10 +150,10 @@ consistent with the 0.75 London baseline you measured.
 
 ---
 
-## 5. A finding in the ops Worker — ✅ FIXED and verified
+## 5. A finding in the ops Worker - ✅ FIXED and verified
 
-**Status: FIXED.** It was never exploitable — `ops.rad-fm.com` does not resolve and no `radfm-ops`
-Worker was deployed — but it would have been on first deploy. **I patched this one** rather than
+**Status: FIXED.** It was never exploitable - `ops.rad-fm.com` does not resolve and no `radfm-ops`
+Worker was deployed - but it would have been on first deploy. **I patched this one** rather than
 only reporting it, because it blocked the project being deployable at all. Review it; it is two
 small changes in `worker/access.ts` and `worker/index.ts`.
 
@@ -174,7 +174,7 @@ There is no D1 binding. `workers_dev` is `false`. None of that is accidental.
 Three things combine, each defensible alone:
 
 1. `wrangler.jsonc` **ships with** `"ACCESS_AUD": "REPLACE_WITH_APPLICATION_AUD"`.
-2. `isUnconfigured()` returns true for exactly that value, and `accessAuth` then calls `next()` —
+2. `isUnconfigured()` returns true for exactly that value, and `accessAuth` then calls `next()` -
    so **every `/api/*` route is unauthenticated** on a deploy of the file as committed.
 3. `backend.ts` resolves its credential as
    `c.req.header('X-Rad-Jwt') ?? c.env.DEV_BACKEND_JWT ?? ''`.
@@ -189,7 +189,7 @@ any allowlisted `/admin/*` request with **no attacker-supplied token**, and `adm
 the result to whoever owns that token.
 
 `/api/session` completes it. Unauthenticated under the bypass, it returns `accessConfigured`,
-`cfTokenPresent`, `devBackendJwt`, `backendOrigin` and `scriptName` — an oracle telling an attacker
+`cfTokenPresent`, `devBackendJwt`, `backendOrigin` and `scriptName` - an oracle telling an attacker
 precisely which of the above is worth trying.
 
 Your `.dev.vars.example` documents both hazards, and correctly identifies `DEV_BACKEND_JWT` in
@@ -206,14 +206,14 @@ path never touches the backend at all.
 
 ### What was changed
 
-**`worker/access.ts`** — the dev bypass is now gated on `import.meta.env.DEV`, a build-time
+**`worker/access.ts`** - the dev bypass is now gated on `import.meta.env.DEV`, a build-time
 substitution: the production bundle compiles `isLocalDev` to a literal `return false`, so the branch
 is dead code there and cannot be reached by any request. Verified in `dist/`. A localhost check sits
 on top as belt-and-braces.
 
 That replaced an earlier version of this fix which keyed on the AUD placeholder plus localhost. It
-was correct about production but had one fatal property: **configuring Access — which you must do
-before deploying — also switched local dev off**, so every `/api` route 401'd on a developer machine
+was correct about production but had one fatal property: **configuring Access - which you must do
+before deploying - also switched local dev off**, so every `/api` route 401'd on a developer machine
 and the dashboard could not be worked on. Confirmed by testing after Access was configured. The two
 concerns are separate: *is Access configured* is about production, *is this a dev server* is about
 where the code runs.
@@ -221,7 +221,7 @@ where the code runs.
 The original placeholder-plus-localhost guard remains underneath as a second layer for the case where
 someone deploys with the AUD unset.
 
-**Superseded detail** — the earlier fix also required the request to arrive at
+**Superseded detail** - the earlier fix also required the request to arrive at
 localhost. A deployed Worker never is, which makes the dangerous state *unreachable* in production
 rather than merely discouraged. On any other host with the placeholder still set it logs loudly and
 returns **503 misconfigured** instead of serving.
@@ -231,7 +231,7 @@ away: local dev legitimately holds the Cloudflare token and has no Access in fro
 have broken the one workflow the bypass exists to support. The discriminator had to be *is this
 deployed*, not *does it hold secrets*.
 
-**`worker/index.ts`** — `/api/session` no longer reports `cfTokenPresent` or `devBackendJwt` while
+**`worker/index.ts`** - `/api/session` no longer reports `cfTokenPresent` or `devBackendJwt` while
 Access is unconfigured. The client still gets them once Access is real; an anonymous caller no longer
 learns which credentials the host holds.
 
@@ -252,7 +252,7 @@ Exercised against the handler directly, with the placeholder AUD and both creden
 
 ### Still worth doing, but not blocking
 
-- Set a real `ACCESS_AUD` / `ACCESS_TEAM_DOMAIN` before deploying — the 503 is a backstop, not a
+- Set a real `ACCESS_AUD` / `ACCESS_TEAM_DOMAIN` before deploying - the 503 is a backstop, not a
   substitute for configuring Access.
 - Do not set `DEV_BACKEND_JWT` in production, as your own `.dev.vars.example` says. It is a shared
   owner credential and reintroduces exactly the attribution problem `DEV_TKN_KEY` has.
@@ -266,5 +266,5 @@ signature, and assert every request to `/admin/me` returns 404 except the genuin
 
 Re-run it after any change to `src/lib/auth/admin.ts`. The regression cases are in
 `tests/lib/admin-auth.test.ts` (28 tests) and `tests/users/admin-routes.test.ts` (23 tests), so
-`bun run test` covers them — but the production run is what caught 2.1 and 2.3, because both are
+`bun run test` covers them - but the production run is what caught 2.1 and 2.3, because both are
 about deployed behaviour rather than logic.

@@ -8,7 +8,7 @@ Day-one setup, and the checks worth running when something looks wrong.
 
 Two prerequisites, in this order.
 
-### 0.1 Apply migration 0003 — ✅ DONE, 5 August 2026
+### 0.1 Apply migration 0003 - ✅ DONE, 5 August 2026
 
 Applied to production: 7 queries, 34,881 rows read, 104,617 written, 1.7s. Nothing to do here; kept
 for reference and for bootstrapping a fresh environment.
@@ -23,7 +23,7 @@ duplicate (user_id, song)        0          <- dedup survived the PK-column back
 GET /admin/me as user 3          200 owner
 ```
 
-Until it ran, **every `/admin/*` endpoint returned 404 for everyone, including the owner** — the auth
+Until it ran, **every `/admin/*` endpoint returned 404 for everyone, including the owner** - the auth
 layer fails closed rather than admitting anyone when it cannot read the role table.
 
 ```bash
@@ -34,7 +34,7 @@ bunx wrangler d1 execute RAD_USERS --remote --file migrations/0003_admin_rbac_an
 What it does: creates `admin_users` and `admin_audit`, seeds user 3 as `owner`, backfills
 `past_plays.played_at` from `created_at` (~34,870 rows), and adds the ordering index.
 
-It is idempotent — safe to re-run — and was dry-run against a local D1 first. That dry run caught a
+It is idempotent - safe to re-run - and was dry-run against a local D1 first. That dry run caught a
 foreign-key failure in the owner seed that would have aborted the whole migration on any database
 without user 3, so the seed is now `EXISTS`-guarded.
 
@@ -57,7 +57,7 @@ curl -s https://api.rad-fm.com/admin/me -H "Authorization: Bearer $TOKEN"
 # expect: {"userId":3,...,"role":"owner","can":{"read":true,"operate":true,"administer":true}}
 ```
 
-### 0.2 Cloudflare API token — ✅ DONE
+### 0.2 Cloudflare API token - ✅ DONE
 
 Created as **`radfm-ops dashboard (read-only)`**, scoped to Patrick's account only:
 
@@ -67,18 +67,18 @@ Account Analytics     : Read      Analytics Engine SQL + GraphQL metrics
 Workers Scripts       : Read      deploy history
 ```
 
-No write permission anywhere — a compromise of this tool reads analytics and nothing else. Adding
+No write permission anywhere - a compromise of this tool reads analytics and nothing else. Adding
 `Workers Scripts : Edit` later would enable rollback from the UI; grant it only when someone will
 actually use it.
 
 The value is in `.dev.vars` in **both** repos (gitignored, verified, `chmod 600`). It is not in git
-and not in any committed file. **It did pass through the session transcript that created it** — it is
+and not in any committed file. **It did pass through the session transcript that created it** - it is
 read-only and account-scoped so the exposure is minor, but roll it from the dashboard if you would
 rather not carry that.
 
 Verified: `GET /user/tokens/verify` → `status: active`.
 
-### 0.3 Analytics Engine — ✅ VERIFIED RECEIVING DATA
+### 0.3 Analytics Engine - ✅ VERIFIED RECEIVING DATA
 
 This was finding 3, open through the whole build because it needed the token above.
 
@@ -89,18 +89,18 @@ curl "https://api.cloudflare.com/client/v4/accounts/49b85a65aa7b9cd658945400b972
       WHERE timestamp > now() - INTERVAL '7' DAY GROUP BY event"
 ```
 
-Result on 5 Aug 2026 — `rad_fm_events` exists and is live:
+Result on 5 Aug 2026 - `rad_fm_events` exists and is live:
 
 ```
   recs        732    2026-08-02 20:52 .. 2026-08-05 10:27
   dj          307    2026-08-02 20:52 .. 2026-08-05 11:19
   play         33    2026-08-05 08:26 .. 2026-08-05 11:16   <- starts at the deploy that added it
   upstream      2
-  setlist       —    emitted per served listing; London cache 100/75 = 0.750
+  setlist       -    emitted per served listing; London cache 100/75 = 0.750
 ```
 
 **The dashboard's headline panels can be built against real data today.** A worked example, the
-"is the DJ getting worse" panel, over 7 days: **264 `ok` out of 307 — an 86% pass rate.** The
+"is the DJ getting worse" panel, over 7 days: **264 `ok` out of 307 - an 86% pass rate.** The
 remainder is the guard doing its job: 16 `simile`, 8 `names-nothing`, 7 `too-short`, and a spread of
 `wrong-track` catches. Treat ~86% as the baseline and alert on a sustained drop.
 
@@ -118,12 +118,12 @@ Two harmless things that would otherwise look like someone changed production:
 
 - **`MAX_ENRICH` reads `source: kv`, `updatedBy: user 3`, value `25`.** That is the write path being
   verified end to end, then restored. The value is identical to the compiled-in default, so
-  behaviour is unchanged. There is deliberately no DELETE endpoint — removing the key means deleting
+  behaviour is unchanged. There is deliberately no DELETE endpoint - removing the key means deleting
   `config:MAX_ENRICH` from the `CONFIG_KV` namespace by hand, and it is not worth doing.
 - **`admin_audit` has a handful of rows** from the same exercise: `config.write` with outcome `ok`
   and several `denied`. They are real audit records of real requests, so they stay.
 
-Everything else — the other five config keys — reads `source: default`, untouched.
+Everything else - the other five config keys - reads `source: default`, untouched.
 
 ---
 
@@ -143,7 +143,7 @@ bun scripts/logs.ts --level warn  --hours 48     # groups by normalised message
 ```
 
 The warning sweep is not optional. A bug that had disabled setlists for a third of all gigs lived
-entirely in warnings — 1,094 of them in three days, none of which threw.
+entirely in warnings - 1,094 of them in three days, none of which threw.
 
 ### "Is the DJ still good?"
 
@@ -155,7 +155,7 @@ GROUP BY reason ORDER BY n DESC
 ```
 
 `blob3` is `degeneracyReason`, or `ok`. A rising share of non-`ok` means the guard is rejecting more
-takes — regressions here are otherwise only detectable by listening to the radio.
+takes - regressions here are otherwise only detectable by listening to the radio.
 
 ### "Are recommendations healthy?"
 
@@ -166,7 +166,7 @@ GROUP BY source
 ```
 
 `degraded` climbing means the orchestrator is falling back. It degrades gracefully, so nothing
-throws — this is the only way to see it.
+throws - this is the only way to see it.
 
 ### "Is entitlement drifting?"
 
@@ -175,7 +175,7 @@ a cache of RevenueCat, not a source of truth: it once went stale and silently st
 from live subscribers. Cross-check against RevenueCat and show both. Disagreement is that bug
 returning.
 
-Standing query — premium rows with no provenance:
+Standing query - premium rows with no provenance:
 
 ```sql
 SELECT p.user_id, m.premium_since, m.last_source
@@ -197,7 +197,7 @@ becoming arbitrary again.
   `10000 Authentication error` regardless of freshness. You need a real API token.
 - **D1 rejects `too many terms in compound SELECT`** (`SQLITE_ERROR 7500`) when you stack ~10
   `UNION ALL` counts. Run separately or use `d1.batch()`. `/admin/stats` already does.
-- **D1 `bind()` accepts only null, number, string and ArrayBuffer** — not booleans, not `undefined`.
+- **D1 `bind()` accepts only null, number, string and ArrayBuffer** - not booleans, not `undefined`.
   `JSON.stringify(undefined)` returns `undefined`, not `"undefined"`. This has caused a production
   500 before.
 - **Observability retains 3 days.** Longer trends must be rolled up into Analytics Engine or D1.
@@ -216,5 +216,5 @@ bunx wrangler rollback --version-id <id>
 ```
 
 Limited to the 100 most recent versions. Rolling back across a secret change needs `?force=true` via
-the API. Migration 0003 is additive — `CREATE TABLE IF NOT EXISTS` plus a backfill — so a code
+the API. Migration 0003 is additive - `CREATE TABLE IF NOT EXISTS` plus a backfill - so a code
 rollback does not require a schema rollback.
