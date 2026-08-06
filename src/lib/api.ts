@@ -472,3 +472,29 @@ export const useAiGateway = (enabled = true) =>
   lift<{ gateway: string; limits: SpendLimit[] | null }>(
     useQuery({ queryKey: ['ai-gateway'], queryFn: () => cfGet('/ai-gateway'), enabled, ...common })
   );
+
+/**
+ * The user directory.
+ *
+ * The backend does not serve this yet - `/admin/users` returns 404 while
+ * `/admin/users/:id/entitlement` and `/admin/users/lookup` both work. So this
+ * resolves to `unavailable` and the view says which route is missing, rather
+ * than the page quietly showing one hardcoded user and looking complete.
+ */
+export type UserRow = {
+  id: number;
+  email?: string;
+  local?: boolean | null;
+  revenueCat?: boolean | null;
+  lastActive?: string | null;
+};
+
+export const useUserList = (filter: string, enabled = true) =>
+  lift<{ users: UserRow[]; total?: number }>(
+    useQuery({
+      queryKey: ['users', filter],
+      queryFn: () => backendGet(`/admin/users?filter=${encodeURIComponent(filter)}&limit=50`),
+      enabled,
+      ...common
+    })
+  );

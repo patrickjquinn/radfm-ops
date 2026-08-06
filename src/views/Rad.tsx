@@ -64,9 +64,11 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
         {!demo && (
           <div style={{ padding: '11px 0 0' }}>
             <Prose max={78}>
-              Slot mapping for <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>upstream</code>{' '}
-              is read from <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>src/lib/analytics.ts</code>{' '}
-              and has never been confirmed against real rows. Treat these columns as unlabelled until the probe runs.
+              Outcomes are shown as the provider recorded them rather than sorted into pass and fail. This column
+              previously tested the outcome against the literal string{' '}
+              <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>'ok'</code>, which the
+              backend never writes, so a working provider read as 100% failure. Nothing here has to guess a success
+              token now.
             </Prose>
           </div>
         )}
@@ -81,10 +83,9 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
                   rows={d.rows.map((r: any) => ({
                     provider: String(r.provider ?? '-'),
                     calls: Number(r.calls ?? 0).toLocaleString(),
-                    fail: Number(r.fail ?? 0).toLocaleString(),
+                    outcomes: r.outcomes ?? {},
                     p50: `${Math.round(Number(r.latency ?? 0))}ms`,
-                    attempts: Number(r.attempts ?? 0).toFixed(2),
-                    bad: Number(r.fail ?? 0) > 0 && Number(r.fail) / Math.max(1, Number(r.calls)) > 0.02
+                    attempts: Number(r.attempts ?? 0).toFixed(2)
                   }))}
                 />
               ) : (
@@ -181,7 +182,7 @@ function DjRows({ rows, incident }: { rows: { reason: string; n: number; share: 
 const cols = [
   { label: 'Provider', w: undefined as number | undefined },
   { label: 'Calls', w: 72 },
-  { label: 'Fail', w: 64 },
+  { label: 'Outcomes', w: undefined as number | undefined },
   { label: 'p50', w: 72 },
   { label: 'Attempts', w: 72 }
 ];
@@ -212,7 +213,7 @@ function UpstreamHead() {
 function UpstreamRows({
   rows
 }: {
-  rows: { provider: string; calls: string; fail: string; p50: string; attempts: string; bad?: boolean }[];
+  rows: { provider: string; calls: string; outcomes: Record<string, number>; p50: string; attempts: string }[];
 }) {
   return (
     <>
@@ -232,7 +233,28 @@ function UpstreamRows({
             {u.provider}
           </span>
           <Cell w={72} value={u.calls} color="rgba(255,255,255,0.7)" />
-          <Cell w={64} value={u.fail} color={u.bad ? C.warn : C.t2} weight={500} />
+          {/*
+            The outcomes as recorded, not sorted into pass and fail. Which token
+            means success is the provider's business, and guessing it is what made
+            a working provider read as 100% failure.
+          */}
+          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {Object.entries(u.outcomes).map(([outcome, n]) => (
+              <span
+                key={outcome}
+                style={{
+                  padding: '2px 7px',
+                  borderRadius: 4,
+                  background: 'rgba(255,255,255,0.06)',
+                  border: LINE.edge,
+                  font: `400 11px/1.5 ${FONT.mono}`,
+                  color: /err|fail|timeout|abort|refus|denied|4\d\d|5\d\d/i.test(outcome) ? C.warnText : C.t2
+                }}
+              >
+                {outcome} {n.toLocaleString()}
+              </span>
+            ))}
+          </span>
           <Cell w={72} value={u.p50} color="rgba(255,255,255,0.7)" />
           <Cell w={72} value={u.attempts} color={parseFloat(u.attempts) > 1.1 ? C.warn : C.t2} />
         </div>

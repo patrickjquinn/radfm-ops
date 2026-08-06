@@ -127,11 +127,12 @@ export const djReasons = (s: Scenario) =>
 
 export const upstream = (s: Scenario) => {
   const inc = s === 'incident';
+  const oc = (ok: number, bad?: Record<string, number>): Record<string, number> => ({ success: ok, ...(bad ?? {}) });
   return [
-    { provider: 'groq · llama-3.3-70b', calls: '3,884', fail: inc ? '214' : '18', p50: inc ? '1,240ms' : '680ms', attempts: inc ? '1.42' : '1.03', bad: inc },
-    { provider: 'openai · gpt-4o-mini', calls: '1,140', fail: '6', p50: '910ms', attempts: '1.01', bad: false },
-    { provider: 'apple music · catalog', calls: '22,410', fail: '84', p50: '210ms', attempts: '1.00', bad: false },
-    { provider: 'reccobeats · features', calls: '8,902', fail: inc ? '412' : '61', p50: '340ms', attempts: inc ? '1.18' : '1.02', bad: inc }
+    { provider: 'groq · llama-3.3-70b', calls: '3,884', outcomes: inc ? oc(3670, { 'error:403': 214 }) : oc(3866, { 'error:timeout': 18 }), p50: inc ? '1,240ms' : '680ms', attempts: inc ? '1.42' : '1.03' },
+    { provider: 'openai · gpt-4o-mini', calls: '1,140', outcomes: oc(1134, { 'error:timeout': 6 }), p50: '910ms', attempts: '1.01' },
+    { provider: 'apple music · catalog', calls: '22,410', outcomes: oc(22326, { 'error:404': 84 }), p50: '210ms', attempts: '1.00' },
+    { provider: 'reccobeats · features', calls: '8,902', outcomes: inc ? oc(8490, { 'error:timeout': 412 }) : oc(8841, { 'error:timeout': 61 }), p50: '340ms', attempts: inc ? '1.18' : '1.02' }
   ];
 };
 
@@ -215,10 +216,3 @@ export const tier1 = [
  * meant to sum sensibly. A slider here produces confident nonsense, so they are
  * shown beside the outcome metrics and changed in code.
  */
-export const weights = [
-  { name: 'W_ENERGY', value: '0.28' },
-  { name: 'W_HARMONIC', value: '0.20' },
-  { name: 'W_VALENCE', value: '0.18' },
-  { name: 'W_ACOUSTIC', value: '0.17' },
-  { name: 'W_TEMPO', value: '0.17' }
-];

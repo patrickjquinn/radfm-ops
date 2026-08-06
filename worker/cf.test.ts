@@ -5,6 +5,7 @@ import {
   fourxxRows,
   groupDjReasons,
   groupNormalised,
+  groupUpstream,
   messageOf,
   normalisePath,
   spendLimit,
@@ -336,5 +337,60 @@ describe('windowLabel', () => {
   it('says unknown rather than guessing', () => {
     expect(windowLabel(undefined)).toBe('unknown');
     expect(windowLabel(0)).toBe('unknown');
+  });
+});
+
+/**
+ * The upstream panel read "9 calls, 9 fail" for a provider that was plainly
+ * working - the DJ produced 210 good lines on it in the same window.
+ *
+ * The slot mapping was never wrong. blobs are [event, provider, model, outcome]
+ * exactly as queried. The bug was `sum(if(blob4 = 'ok', 0, 1))`: it invented a
+ * success token the backend never writes, so every call fell into the else
+ * branch and got reported as a provider failure.
+ *
+ * The fix is to stop guessing. Which string means success is the provider's
+ * business; we show what was recorded.
+ */
+describe('groupUpstream', () => {
+  it('folds per-outcome rows into one row per provider', () => {
+    const rows = groupUpstream([
+      { provider: 'groq', outcome: 'success', calls: '400', latency: 700, attempts: 1 },
+      { provider: 'groq', outcome: 'error:403', calls: '100', latency: 1200, attempts: 2 }
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].calls).toBe(500);
+    expect(rows[0].outcomes).toEqual({ success: 400, 'error:403': 100 });
+  });
+
+  it('adds string counts as numbers', () => {
+    // Analytics Engine returns counts as strings. Concatenating gives "400100",
+    // which is a plausible-looking number and therefore the worst kind of wrong.
+    expect(groupUpstream([
+      { provider: 'g', outcome: 'a', calls: '400' },
+      { provider: 'g', outcome: 'b', calls: '100' }
+    ])[0].calls).toBe(500);
+  });
+
+  it('weights the averages by call count', () => {
+    // A rare failing outcome must not drag the provider's p50 to its own value.
+    const [g] = groupUpstream([
+      { provider: 'g', outcome: 'success', calls: '900', latency: 100, attempts: 1 },
+      { provider: 'g', outcome: 'error', calls: '100', latency: 1100, attempts: 2 }
+    ]);
+    expect(Math.round(g.latency)).toBe(200);
+    expect(Number(g.attempts.toFixed(1))).toBe(1.1);
+  });
+
+  it('names an empty outcome rather than rendering a blank chip', () => {
+    expect(groupUpstream([{ provider: 'g', outcome: '', calls: '3' }])[0].outcomes).toEqual({ '(not recorded)': 3 });
+  });
+
+  it('ranks providers by call volume', () => {
+    const rows = groupUpstream([
+      { provider: 'small', outcome: 'success', calls: '5' },
+      { provider: 'big', outcome: 'success', calls: '500' }
+    ]);
+    expect(rows[0].provider).toBe('big');
   });
 });

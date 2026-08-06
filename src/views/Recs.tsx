@@ -3,6 +3,7 @@ import { C, FONT, LINE, num } from '../theme';
 import { Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { useAeRecs } from '../lib/api';
 import * as fx from '../lib/fixtures';
+import { WEIGHTS_SOURCE, weights } from '../lib/constants';
 
 export default function Recs({ ctx }: { ctx: Ctx }) {
   const demo = ctx.demo;
@@ -79,15 +80,17 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
       </section>
 
       <section>
-        <SectionHead title="Scoring weights" meta="Tier 2 · read-only" />
+        <SectionHead title="Scoring weights" meta={`${WEIGHTS_SOURCE} · not read live`} />
         <div style={{ padding: '11px 0 12px' }}>
           <Prose>
             These interact - a tuned system, not independent dials. A slider here produces confident nonsense, so they
-            are shown beside the outcome metrics above and changed in code.
+            are shown beside the outcome metrics above and changed in code. <strong style={{ fontWeight: 500, color: C.warnText }}>
+            Transcribed from the backend source, not read from the running system</strong> - no route serves them, so
+            they can drift the moment that file is edited.
           </Prose>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {fx.weights.map((w) => (
+          {weights.map((w) => (
             <div
               key={w.name}
               style={{

@@ -544,18 +544,61 @@ app.get('/ae/upstream', async (c) => {
   const gate = requireToken(c.env);
   if (gate) return c.json(gate);
   const hours = clampHours(c.req.query('hours'), 24);
+
+  /**
+   * Group by the OUTCOME rather than testing it against a guessed success token.
+   *
+   * This counted `sum(if(blob4 = 'ok', 0, 1)) AS fail`, which assumed the backend
+   * writes the literal string 'ok'. It does not, so every call counted as a
+   * failure and the panel read "9 calls, 9 fail" for a provider that is plainly
+   * working - the DJ produced 210 good lines in the same window on that provider.
+   *
+   * The slot mapping was never the problem. blobs are [event, provider, model,
+   * outcome] and doubles [attempts, latencyMs], exactly as queried. The bug was
+   * inventing a value for the outcome field and then reporting the mismatch as
+   * a provider failure.
+   *
+   * So: return the outcomes as they are written. The UI shows what the provider
+   * actually reported, which cannot be wrong about a token it never has to guess.
+   */
   const out = await ae(
     c.env,
-    `SELECT blob2 AS provider, count() AS calls,
-            sum(if(blob4 = 'ok', 0, 1)) AS fail,
+    `SELECT blob2 AS provider, blob4 AS outcome, count() AS calls,
             avg(double2) AS latency, avg(double1) AS attempts
      FROM rad_fm_events
      WHERE blob1 = 'upstream' AND timestamp > now() - INTERVAL '${hours}' HOUR
-     GROUP BY provider ORDER BY calls DESC`
+     GROUP BY provider, outcome ORDER BY calls DESC`
   );
   if (out.ok === false) return c.json(out);
-  return c.json({ ok: true, rows: out.data?.data ?? [], slotMappingConfirmed: false });
+  return c.json({ ok: true, rows: groupUpstream(out.data?.data ?? []) });
 });
+
+/**
+ * Fold the per-outcome rows into one row per provider, keeping the outcome
+ * breakdown rather than collapsing it to a pass/fail count we cannot justify.
+ *
+ * Analytics Engine returns counts as STRINGS. Adding them without Number() gives
+ * string concatenation, which produces a plausible-looking total - the worst kind
+ * of wrong number.
+ */
+export function groupUpstream(rows: any[]) {
+  const byProvider = new Map<string, { provider: string; calls: number; outcomes: Record<string, number>; latency: number; attempts: number }>();
+
+  for (const r of rows) {
+    const provider = String(r?.provider ?? 'unknown');
+    const outcome = String(r?.outcome ?? '').trim() || '(not recorded)';
+    const calls = Number(r?.calls ?? 0);
+    const hit = byProvider.get(provider) ?? { provider, calls: 0, outcomes: {}, latency: 0, attempts: 0 };
+    // Weighted so a provider's average is not skewed by a rare outcome.
+    hit.latency = (hit.latency * hit.calls + Number(r?.latency ?? 0) * calls) / (hit.calls + calls || 1);
+    hit.attempts = (hit.attempts * hit.calls + Number(r?.attempts ?? 0) * calls) / (hit.calls + calls || 1);
+    hit.calls += calls;
+    hit.outcomes[outcome] = (hit.outcomes[outcome] ?? 0) + calls;
+    byProvider.set(provider, hit);
+  }
+
+  return [...byProvider.values()].sort((a, b) => b.calls - a.calls);
+}
 
 /* ── Deploy history ────────────────────────────────────────────────────────── */
 

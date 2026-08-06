@@ -5,6 +5,7 @@ import { Icon } from '../icons';
 import { Callout, Prose, SectionHead } from '../components/primitives';
 import { reasonText, useAiGateway, useConfig, useSession, useSetConfig, type ConfigEntry } from '../lib/api';
 import * as fx from '../lib/fixtures';
+import { WEIGHTS_SOURCE, weights } from '../lib/constants';
 
 /**
  * Tier 1 runtime config.
@@ -76,13 +77,13 @@ export default function Config({ ctx }: { ctx: Ctx }) {
       </section>
 
       <section>
-        <SectionHead title="Tier 2 · read-only, change via PR" />
+        <SectionHead title="Tier 2 · read-only, change via PR" meta={`${WEIGHTS_SOURCE} · not read live`} />
         <div style={{ font: `400 12.5px/1.6 ${FONT.text}`, color: 'rgba(255,255,255,0.5)', padding: '12px 0', maxWidth: '80ch' }}>
           The recommendation weights are a tuned system, not independent dials, and they are meant to sum sensibly. They
           live on the Recommendations view next to the outcome metrics, so a change can be seen rather than guessed.
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {fx.weights.map((w) => (
+          {weights.map((w) => (
             <div
               key={w.name}
               style={{

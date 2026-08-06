@@ -1,5 +1,6 @@
 import {
   useAdminStats,
+  useTraffic,
   useAeDj,
   useAeProbe,
   useAeRecs,
@@ -107,6 +108,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   const probe = useAeProbe();
   const versions = useVersions();
   const setlists = useSetlistFill(logHours, live);
+  const traffic = useTraffic(hours);
 
   if (demo) return demoHealth(demo);
 
@@ -118,7 +120,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     { s: recs, label: 'Pool health', go: 'recs' as ViewId },
     { s: probe, label: 'Analytics Engine', go: 'rad' as ViewId },
     { s: versions, label: 'Deploy history', go: 'overview' as ViewId },
-    { s: setlists, label: 'Setlist fill rate', go: 'logs' as ViewId }
+    { s: setlists, label: 'Setlist fill rate', go: 'logs' as ViewId },
+    { s: traffic, label: 'Request metrics', go: 'traffic' as ViewId }
   ];
 
   const unreadable = sources.filter((x) => x.s.state === 'unavailable');
@@ -183,6 +186,25 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
    * threshold both hang off this number, so it has to be the real one.
    */
   const warnTotal = warn.state === 'ok' ? warn.data.total : null;
+  /**
+   * 5xx and uncaught exceptions, READ rather than assumed.
+   *
+   * This was the literal string '0'. Not a default, not a fallback - a constant,
+   * printed in the most prominent position in the product, that would have gone
+   * on reading 0 through a total 500-level outage. The Traffic view had it right
+   * all along from GraphQL `sum.errors`; the verdict simply never asked.
+   *
+   * It is the exact failure this dashboard exists because of - Cloudflare's own
+   * console showing "0 Errors" while every user was locked out - reproduced in
+   * our own headline, against the one metric that incident was about.
+   *
+   * Null when traffic could not be read, and rendered as "-". A zero here has to
+   * mean "we asked and there were none".
+   */
+  const fivexxTotal =
+    traffic.state === 'ok'
+      ? traffic.data.series.reduce((a: number, s: any) => a + Number(s.sum?.errors ?? 0), 0)
+      : null;
   const djPct = dj.state === 'ok' ? nonOkPct(dj.data.rows) : null;
   const recsPct = recs.state === 'ok' ? degradedPct(recs.data.rows) : null;
   const recsZero = recs.state === 'ok' ? (recs.data.zeroTrackRequests ?? null) : null;
@@ -297,7 +319,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         sub: 'This is not a claim that anything is healthy. Nothing below has been confirmed against the live system.',
         stats: [
           { value: fourxxTotal != null ? compact(fourxxTotal) : '-', label: '4xx', tone: 'dim' },
-          { value: '-', label: '5xx', tone: 'dim' },
+          { value: fivexxTotal != null ? compact(fivexxTotal) : '-', label: '5xx', tone: fivexxTotal ? 'bad' : 'dim' },
           { value: String(unreadable.length), label: 'sources down', tone: 'bad' }
         ]
       }
@@ -327,7 +349,11 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
           : 'Every source read cleanly and none of them is reporting a problem.',
         stats: [
           { value: fourxxTotal != null ? compact(fourxxTotal) : '-', label: '4xx', tone: fourxxTotal && fourxxTotal > 1000 ? 'bad' : 'plain' },
-          { value: '0', label: '5xx', tone: 'plain' },
+          {
+            value: fivexxTotal != null ? compact(fivexxTotal) : '-',
+            label: '5xx',
+            tone: fivexxTotal ? 'bad' : 'plain'
+          },
           { value: warnTotal != null ? compact(warnTotal) : '-', label: 'warnings', tone: 'dim' }
         ]
       };

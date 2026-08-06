@@ -3,24 +3,38 @@ import type { Ctx } from '../App';
 import { BG, C, FONT, LINE } from '../theme';
 import { Icon } from '../icons';
 import { ActionButton, SectionHead, Source, type Tone, toneColor } from '../components/primitives';
-import { useEntitlement, useUserLookup } from '../lib/api';
+import { statValue, useAdminStats, useEntitlement, useUserList, useUserLookup } from '../lib/api';
 import * as fx from '../lib/fixtures';
+
+export type UserFilter = 'all' | 'premium' | 'drift' | 'admin';
 
 export default function Users({ ctx }: { ctx: Ctx }) {
   const demo = ctx.demo;
-  const [term, setTerm] = useState('3');
-  const [submitted, setSubmitted] = useState('3');
-  // The id whose entitlement is shown. A numeric search sets it directly; an email
-  // or RevenueCat id sets it once a match is chosen.
-  const [userId, setUserId] = useState('3');
+  const [term, setTerm] = useState('');
+  const [submitted, setSubmitted] = useState('');
+  /**
+   * Nothing is selected until someone selects it.
+   *
+   * This defaulted to '3' - the owner's own id - so the page always rendered a
+   * populated entitlement card. That made a missing capability look like a
+   * working screen: the design specifies a full directory here, the backend does
+   * not serve one, and defaulting to a single hardcoded user hid that completely
+   * rather than reporting it.
+   */
+  const [userId, setUserId] = useState('');
+  const [filter, setFilter] = useState<UserFilter>('all');
 
   const isNumeric = /^\d+$/.test(submitted);
   const canLookup = demo ? true : ctx.can.operate;
   const lookup = useUserLookup(submitted, canLookup, !demo);
-  const ent = useEntitlement(userId, !demo);
+  const ent = useEntitlement(userId, !demo && Boolean(userId));
+  const stats = useAdminStats(!demo);
+  const list = useUserList(filter, !demo);
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
+      <UserStats ctx={ctx} stats={stats} filter={filter} pick={setFilter} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -37,7 +51,9 @@ export default function Users({ ctx }: { ctx: Ctx }) {
           borderRadius: 8,
           background: 'rgba(255,255,255,0.045)',
           border: '1px solid rgba(255,255,255,0.1)',
-          maxWidth: 520
+          flex: '1 1 300px',
+          minWidth: 0,
+          maxWidth: 420
         }}
       >
         <span style={{ color: 'rgba(255,255,255,0.45)', display: 'flex' }}>
@@ -59,6 +75,32 @@ export default function Users({ ctx }: { ctx: Ctx }) {
           }}
         />
       </form>
+
+        <div style={{ display: 'flex', gap: 1, padding: 2, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: LINE.edge }}>
+          {(['drift', 'premium', 'admin', 'all'] as UserFilter[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setFilter(k)}
+              aria-pressed={filter === k}
+              style={{
+                padding: '6px 11px',
+                borderRadius: 6,
+                border: 'none',
+                cursor: 'pointer',
+                font: `500 11.5px/1.2 ${FONT.mono}`,
+                background: filter === k ? 'rgba(63,179,166,0.16)' : 'transparent',
+                color: filter === k ? C.ok : C.t3
+              }}
+            >
+              {k === 'drift' ? 'Needs attention' : k === 'admin' ? 'Admins' : k === 'all' ? 'All' : 'Premium'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <UserList ctx={ctx} list={list} filter={filter} selected={userId} pick={setUserId} />
+
       {/*
         A non-numeric search goes through the lookup route, which resolves an email
         or a RevenueCat subscriber id to user ids. Matches are listed rather than
@@ -139,12 +181,13 @@ export default function Users({ ctx }: { ctx: Ctx }) {
 
       {demo ? (
         <EntitlementCard ctx={ctx} data={fx.entitlement(demo)} header={{ title: 'user 3 · patrick.jm.quinn@gmail.com', sub: 'created 2025-11-02 · owner' }} />
-      ) : (
+      ) : userId ? (
         <Source data={ent} what="Entitlement">
           {(d) => <EntitlementCard ctx={ctx} data={shape(d)} header={headerOf(d, userId)} />}
         </Source>
-      )}
+      ) : null}
 
+      {(demo || userId) && (
       <section>
         <SectionHead title="Entitlement audit" meta="premium_audit · append-only" />
         {demo ? (
@@ -172,6 +215,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
           </Source>
         )}
       </section>
+      )}
     </div>
   );
 }
@@ -401,3 +445,223 @@ function shape(d: any) {
   const drift = crossChecked && Boolean(premium) !== Boolean(rc.active);
   return { drift, crossChecked, local, rc: rcRows };
 }
+
+/**
+ * The four counts the design puts at the top, each doubling as a filter.
+ *
+ * Registered and Premium come from /admin/stats and are real. Drift and Admins
+ * cannot be computed without the directory route, so they render as unavailable
+ * rather than as 0 - a drift count of zero is the single most reassuring number
+ * on this page and it must never be a guess.
+ */
+function UserStats({
+  ctx,
+  stats,
+  filter,
+  pick
+}: {
+  ctx: Ctx;
+  stats: ReturnType<typeof useAdminStats>;
+  filter: UserFilter;
+  pick: (f: UserFilter) => void;
+}) {
+  const d = stats.state === 'ok' ? stats.data : null;
+  const users = d ? statValue(d.users) : null;
+  const premium = d ? statValue(d.premium) : null;
+  const pct = users && premium != null ? `${((premium / users) * 100).toFixed(1)}% of registered` : 'of registered';
+
+  const cards: { label: string; value: string; context: string; tone: Tone; f: UserFilter }[] = [
+    {
+      label: 'Registered',
+      value: users != null ? users.toLocaleString() : 'unavailable',
+      context: d?.newUsers7d != null ? `+${d.newUsers7d} in 7d` : 'D1',
+      tone: users != null ? 'plain' : 'warn',
+      f: 'all'
+    },
+    {
+      label: 'Premium',
+      value: premium != null ? premium.toLocaleString() : 'unavailable',
+      context: pct,
+      tone: premium != null ? 'plain' : 'warn',
+      f: 'premium'
+    },
+    {
+      label: 'Entitlement drift',
+      value: 'unavailable',
+      context: 'needs the directory route to compare every row',
+      tone: 'warn',
+      f: 'drift'
+    },
+    {
+      label: 'Admins',
+      value: 'unavailable',
+      context: 'admin_users is not exposed to this dashboard',
+      tone: 'warn',
+      f: 'admin'
+    }
+  ];
+
+  if (ctx.demo) return null;
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,190px),1fr))',
+        gap: 1,
+        background: 'rgba(255,255,255,0.08)',
+        border: LINE.edge,
+        borderRadius: 8,
+        overflow: 'hidden'
+      }}
+    >
+      {cards.map((c) => (
+        <button
+          key={c.label}
+          type="button"
+          onClick={() => pick(c.f)}
+          aria-pressed={filter === c.f}
+          style={{
+            background: BG.card,
+            padding: '16px 18px 18px',
+            border: 'none',
+            textAlign: 'left',
+            cursor: 'pointer',
+            boxShadow: filter === c.f ? `inset 0 -2px 0 ${C.ok}` : undefined
+          }}
+        >
+          <div
+            style={{
+              font: `600 9.5px/1 ${FONT.text}`,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: C.t3,
+              marginBottom: 12
+            }}
+          >
+            {c.label}
+          </div>
+          <div
+            style={{
+              font: `500 clamp(22px,2.4vw,28px)/1 ${FONT.mono}`,
+              fontVariantNumeric: 'tabular-nums',
+              letterSpacing: '-0.02em',
+              color: toneColor(c.tone)
+            }}
+          >
+            {c.value}
+          </div>
+          <div style={{ font: `400 11px/1.5 ${FONT.text}`, color: C.t3, marginTop: 7 }}>{c.context}</div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The directory the design specifies, and the route that would populate it.
+ *
+ * `/admin/users` 404s on the backend today. Saying so here - naming the route,
+ * and naming what does work - is the whole job of this panel until it ships. The
+ * alternative, which is what this page did before, is to show a single user and
+ * let the operator assume that is all there is.
+ */
+function UserList({
+  ctx,
+  list,
+  filter,
+  selected,
+  pick
+}: {
+  ctx: Ctx;
+  list: ReturnType<typeof useUserList>;
+  filter: UserFilter;
+  selected: string;
+  pick: (id: string) => void;
+}) {
+  if (ctx.demo) return null;
+  const title = filter === 'drift' ? 'Needs attention' : filter === 'premium' ? 'Premium users' : filter === 'admin' ? 'Admins' : 'All users';
+
+  return (
+    <section>
+      <SectionHead title={title} meta="admin/users · D1 + RevenueCat" />
+      <Source data={list} what="User directory">
+        {(d) =>
+          d.users?.length ? (
+            <>
+              <ListHead />
+              {d.users.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => pick(String(u.id))}
+                  style={{
+                    display: 'flex',
+                    gap: 14,
+                    width: '100%',
+                    textAlign: 'left',
+                    alignItems: 'baseline',
+                    padding: '11px 0',
+                    border: 'none',
+                    borderBottom: LINE.row,
+                    background: String(u.id) === selected ? 'rgba(63,179,166,0.07)' : 'transparent',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <span style={{ width: 52, flex: 'none', font: `400 12.5px/1.4 ${FONT.mono}`, color: C.t2 }}>{u.id}</span>
+                  <span style={{ flex: 1, minWidth: 0, font: `400 12.5px/1.4 ${FONT.text}`, color: 'rgba(255,255,255,0.85)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {u.email ?? '-'}
+                  </span>
+                  <Flag w={96} value={u.local} />
+                  <Flag w={96} value={u.revenueCat} />
+                  <span style={{ width: 104, textAlign: 'right', font: `400 12.5px/1.4 ${FONT.mono}`, color: C.t2 }}>
+                    {(u.lastActive ?? '-').slice(0, 10)}
+                  </span>
+                </button>
+              ))}
+            </>
+          ) : (
+            <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: C.t3 }}>
+              No users matched this filter.
+            </div>
+          )
+        }
+      </Source>
+    </section>
+  );
+}
+
+const ListHead = () => (
+  <div
+    style={{
+      display: 'flex',
+      gap: 14,
+      padding: '10px 0',
+      borderBottom: LINE.row,
+      font: `600 9.5px/1 ${FONT.text}`,
+      letterSpacing: '0.12em',
+      textTransform: 'uppercase',
+      color: C.t3
+    }}
+  >
+    <span style={{ width: 52, flex: 'none' }}>User</span>
+    <span style={{ flex: 1, minWidth: 0 }}>Email</span>
+    <span style={{ width: 96, textAlign: 'right' }}>Local</span>
+    <span style={{ width: 96, textAlign: 'right' }}>RevenueCat</span>
+    <span style={{ width: 104, textAlign: 'right' }}>Last active</span>
+  </div>
+);
+
+/** null is "not known", which is not the same as false. */
+const Flag = ({ w, value }: { w: number; value: boolean | null | undefined }) => (
+  <span
+    style={{
+      width: w,
+      textAlign: 'right',
+      font: `400 12.5px/1.4 ${FONT.mono}`,
+      color: value == null ? C.t3 : value ? C.ok : C.t2
+    }}
+  >
+    {value == null ? 'unknown' : value ? 'premium' : 'free'}
+  </span>
+);

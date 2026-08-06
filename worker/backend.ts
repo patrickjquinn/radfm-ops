@@ -34,6 +34,7 @@ const ALLOWED_GET = [
   // Routes the backend does not serve yet. They are allowlisted so the dashboard
   // lights up the moment they ship; until then they 404 and the UI says which
   // route is missing rather than blaming the client.
+  /^\/admin\/users$/,
   /^\/admin\/users\/lookup$/,
   /^\/admin\/stations$/,
   /^\/admin\/metrics\/setlists$/,
