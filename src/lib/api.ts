@@ -630,10 +630,17 @@ export const useArtwork = (days: number, enabled = true) =>
   );
 
 /**
- * What is on air. `silentFor` is minutes since the last track anyone heard;
- * null means nothing played in the window at all, which is worse than a number.
+ * Who is listening, PER LISTENER.
+ *
+ * Every user has their own station and their own DJ, so there is no single
+ * transmission to be on or off. `listeners` is distinct people in three widening
+ * windows, and `nowPlaying` is one line per distinct listener - never several
+ * tracks from the same person, which would read as one station's queue.
  */
 export const useOnAir = (enabled = true) =>
-  lift<{ silentFor: number | null; recent: { artist: string; title: string; at: string }[] }>(
-    useQuery({ queryKey: ['onair'], queryFn: () => cfGet('/ae/onair'), enabled, ...common, staleTime: 20_000 })
-  );
+  lift<{
+    listeners: { last30m: number; last3h: number; last24h: number };
+    plays24h: number;
+    quietFor: number | null;
+    nowPlaying: { listener: string; artist: string; title: string; at: string }[];
+  }>(useQuery({ queryKey: ['onair'], queryFn: () => cfGet('/ae/onair'), enabled, ...common, staleTime: 20_000 }));

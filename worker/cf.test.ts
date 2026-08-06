@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampHours,
   costRows,
+  dedupeByListener,
   exactTotal,
   fourxxRows,
   groupDjReasons,
@@ -486,5 +487,39 @@ describe('costRows', () => {
 
   it('ranks by the larger of the two estimates, so a cheap-looking row cannot hide', () => {
     expect(costRows(live)[0].model).toBe('openai/gpt-oss-120b');
+  });
+});
+
+/**
+ * Every user gets their own station and their own DJ, so a liveness sample must
+ * show DIFFERENT listeners. Three consecutive tracks from one person would read
+ * as a single station's queue - the mental model of one broadcast, which is
+ * precisely the product this is not.
+ */
+describe('dedupeByListener', () => {
+  const rows = [
+    { listener: '3', artist: 'A', title: 'One', timestamp: '2026-08-06 20:17:36' },
+    { listener: '3', artist: 'A', title: 'Two', timestamp: '2026-08-06 20:13:23' },
+    { listener: '9', artist: 'B', title: 'Three', timestamp: '2026-08-06 20:12:00' },
+    { listener: '9', artist: 'B', title: 'Four', timestamp: '2026-08-06 20:10:00' },
+    { listener: '4', artist: 'C', title: 'Five', timestamp: '2026-08-06 20:09:00' }
+  ];
+
+  it('returns one row per listener, not one per play', () => {
+    const out = dedupeByListener(rows);
+    expect(out.map((r) => r.listener)).toEqual(['3', '9', '4']);
+  });
+
+  it('keeps each listener MOST RECENT play', () => {
+    // Newest first in, newest kept - otherwise the sample shows what someone was
+    // hearing an hour ago and calls it now playing.
+    expect(dedupeByListener(rows)[0].title).toBe('One');
+    expect(dedupeByListener(rows)[1].title).toBe('Three');
+  });
+
+  it('drops rows with no listener rather than grouping them together', () => {
+    // An empty index would otherwise collapse several real listeners into one
+    // phantom row.
+    expect(dedupeByListener([{ listener: '', title: 'x' }, { listener: null, title: 'y' }])).toEqual([]);
   });
 });

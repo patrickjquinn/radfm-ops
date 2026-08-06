@@ -484,46 +484,88 @@ app.get('/dataset', async (c) => {
 });
 
 /**
- * What is on air right now.
+ * Who is listening right now, and what Rad is playing them.
  *
- * Rad.FM is a radio station - "Radio that knows what you like", on air since
- * 2019 - and this dashboard could not answer the one question you would ask a
- * broadcast control room: is it transmitting, and what is playing? Every panel
- * measured whether the CODE was healthy. None measured whether the STATION was.
+ * PER LISTENER, because that is what the product is. Rad.FM is not one
+ * broadcast: every user gets their own station and their own AI DJ, built from
+ * what they love, skip and replay. There is no single transmission to be on or
+ * off, so "is the station on air" is not a question this system can be asked.
  *
- * The play log answers it. Each row is a track a real listener actually heard,
- * so the most recent one is the on-air moment, and the gap since it is the
- * closest thing to dead air this system can observe.
+ * The question it CAN be asked is how many people are currently being served,
+ * and that is the one a control room for this product actually needs. A single
+ * listener's station can fail while every other station is fine, and total
+ * silence across all listeners means the whole system has stopped.
  *
- * Silence is not an error anywhere else: nothing throws, no 5xx, no warning. A
- * station can be completely off air with every engineering panel green.
+ * Neither is visible anywhere else in this dashboard: nothing throws when a
+ * listener stops being played to.
  */
 app.get('/ae/onair', async (c) => {
   const gate = requireToken(c.env);
   if (gate) return c.json(gate);
 
-  const out = await ae(
-    c.env,
-    `SELECT blob4 AS artist, blob5 AS title, timestamp
-     FROM rad_fm_events WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '6' HOUR
-     ORDER BY timestamp DESC LIMIT 8`
-  );
-  if (out.ok === false) return c.json(out);
+  const [live, recent] = await Promise.all([
+    // Distinct listeners in three widening windows. One number cannot separate
+    // "quiet minute" from "nobody has listened all day", and those need
+    // different reactions.
+    ae(
+      c.env,
+      `SELECT
+         count(DISTINCT if(timestamp > now() - INTERVAL '30' MINUTE, index1, null)) AS last30m,
+         count(DISTINCT if(timestamp > now() - INTERVAL '3' HOUR, index1, null)) AS last3h,
+         count(DISTINCT index1) AS last24h,
+         count() AS plays24h
+       FROM rad_fm_events WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '24' HOUR`
+    ),
+    ae(
+      c.env,
+      `SELECT index1 AS listener, blob4 AS artist, blob5 AS title, timestamp
+       FROM rad_fm_events WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '3' HOUR
+       ORDER BY timestamp DESC LIMIT 12`
+    )
+  ]);
+  if (live.ok === false) return c.json(live);
+  if (recent.ok === false) return c.json(recent);
 
-  const rows = out.data?.data ?? [];
-  const last = rows[0]?.timestamp ? Date.parse(String(rows[0].timestamp).replace(' ', 'T') + 'Z') : null;
+  const counts = live.data?.data?.[0] ?? {};
+  const rows = recent.data?.data ?? [];
+  const lastAt = rows[0]?.timestamp ? Date.parse(String(rows[0].timestamp).replace(' ', 'T') + 'Z') : null;
+
   return c.json({
     ok: true,
-    // Minutes since the last track anyone heard. Null when nothing played in the
-    // window at all, which is a stronger statement than a large number.
-    silentFor: last ? Math.round((Date.now() - last) / 60_000) : null,
-    recent: rows.map((r: any) => ({
+    listeners: {
+      last30m: Number(counts.last30m ?? 0),
+      last3h: Number(counts.last3h ?? 0),
+      last24h: Number(counts.last24h ?? 0)
+    },
+    plays24h: Number(counts.plays24h ?? 0),
+    /** Minutes since the last play by ANY listener. Null means none in 3h. */
+    quietFor: lastAt ? Math.round((Date.now() - lastAt) / 60_000) : null,
+    /**
+     * One line per DISTINCT listener, newest first. Showing three consecutive
+     * plays from the same person would read as a single station's queue, which
+     * is exactly the wrong mental model for a product where everyone has their
+     * own.
+     */
+    nowPlaying: dedupeByListener(rows).slice(0, 4)
+  });
+});
+
+export function dedupeByListener(rows: any[]) {
+  const seen = new Set<string>();
+  const out: { listener: string; artist: string; title: string; at: string }[] = [];
+  for (const r of rows) {
+    const listener = String(r?.listener ?? '');
+    if (!listener || seen.has(listener)) continue;
+    seen.add(listener);
+    out.push({
+      listener,
       artist: String(r?.artist ?? ''),
       title: String(r?.title ?? ''),
       at: String(r?.timestamp ?? '')
-    }))
-  });
-});
+    });
+  }
+  return out;
+}
 
 /**
  * Activation: when each listener played for the FIRST time.

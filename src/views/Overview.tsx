@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { BG, C, ELEV, FONT, LINE, MOTION, dot, num } from '../theme';
+import { BG, C, ELEV, FONT, LINE, MOTION, dot, focusLift, num } from '../theme';
 import { Icon } from '../icons';
 import { Generated, KeyRow, SectionHead, Source } from '../components/primitives';
 import {
@@ -115,12 +115,8 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               onClick={() => ctx.go(d.go)}
               // tvOS focus: the thing under the cursor lifts toward you. Cheap,
               // and it turns a wall of equal boxes into something navigable.
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.045)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = BG.card;
-              }}
+              onMouseEnter={(e) => Object.assign(e.currentTarget.style, focusLift(true))}
+              onMouseLeave={(e) => Object.assign(e.currentTarget.style, { ...focusLift(false), background: BG.card })}
               style={{
                 background: BG.card,
                 padding: '18px 20px 20px',
@@ -130,7 +126,8 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 9,
-                transition: `background ${MOTION}`
+                position: 'relative',
+                ...focusLift(false)
               }}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -183,8 +180,8 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               key={a.title}
               type="button"
               onClick={() => ctx.go(a.go)}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={(e) => Object.assign(e.currentTarget.style, focusLift(true))}
+              onMouseLeave={(e) => Object.assign(e.currentTarget.style, { ...focusLift(false), background: 'transparent' })}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -698,74 +695,73 @@ function Narrative({ signals, verdict, hours }: { signals: Signal[]; verdict: st
 
 
 /**
- * On air, or not, in the product's own vocabulary.
+ * Who is being served right now.
  *
- * Each row in the play log is a track a real listener actually heard, so the
- * most recent one is the on-air moment and the gap since it is the closest thing
- * to dead air this system can observe. The thresholds are minutes rather than a
- * percentage because that is how a broadcaster thinks about silence.
+ * NOT "is the station on air". Rad.FM gives every user their own station and
+ * their own DJ - built from what they love, skip and replay - so there is no
+ * single transmission to be on or off. This panel first said ON AIR NOW with one
+ * track under it, which described a product that does not exist: one broadcast,
+ * everyone hearing the same thing.
  *
- * 15 minutes is roughly four tracks. Below that a gap is a quiet moment; beyond
- * it, something has stopped. Neither is a round number chosen for tidiness - a
- * typical track is 3-4 minutes, so this is "several tracks should have played by
- * now and did not".
+ * What a control room for THIS product needs is how many people are currently
+ * being played to, and a sample across DIFFERENT listeners so the per-user shape
+ * is visible on the page rather than implied.
  */
 function OnAir({ state, demo }: { state: ReturnType<typeof useOnAir>; demo: boolean }) {
   const eyebrow = (label: string, colour: string, live: boolean) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
       <span style={dot(colour, live)} />
       <span
-        style={{
-          font: `600 9.5px/1 ${FONT.text}`,
-          letterSpacing: '0.18em',
-          textTransform: 'uppercase',
-          color: colour
-        }}
+        style={{ font: `600 9.5px/1 ${FONT.text}`, letterSpacing: '0.18em', textTransform: 'uppercase', color: colour }}
       >
         {label}
       </span>
     </div>
   );
 
-  if (demo) return eyebrow('On air', C.ok, true);
-  if (state.state !== 'ok') return eyebrow('Air status unavailable', C.warnText, false);
+  if (demo) return eyebrow('3 listening now', C.ok, true);
+  if (state.state !== 'ok') return eyebrow('Listener activity unavailable', C.warnText, false);
 
-  const { silentFor, recent } = state.data;
-  const now = recent[0];
+  const { listeners, quietFor, nowPlaying } = state.data;
 
-  // Nothing at all in six hours. A stronger statement than a large gap, and it
-  // deserves its own wording rather than "silent for 360 minutes".
-  if (silentFor == null)
+  // Nobody at all in three hours. Every station is idle, not one of them.
+  if (quietFor == null)
     return (
       <>
-        {eyebrow('Off air', C.bad, false)}
-        <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: C.t2, marginBottom: 14 }}>
-          Nothing played in six hours. Nothing throws when nobody is being played to, so no other panel will show this.
+        {eyebrow('Nobody listening', C.bad, false)}
+        <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: C.t2, marginBottom: 14, maxWidth: '62ch' }}>
+          No plays from any listener in three hours. Nothing throws when nobody is being played to, so no other panel
+          here will show it.
         </div>
       </>
     );
 
-  const quiet = silentFor >= 15;
+  const now = listeners.last30m;
   return (
     <>
-      {eyebrow(quiet ? `Silent for ${silentFor}m` : 'On air now', quiet ? C.warnText : C.ok, !quiet)}
-      {now && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 9,
-            marginBottom: 14,
-            font: `400 13px/1.5 ${FONT.text}`,
-            color: C.t2,
-            flexWrap: 'wrap'
-          }}
-        >
-          <span style={{ color: '#fff', fontWeight: 500 }}>{now.title}</span>
-          <span>{now.artist}</span>
-          <span style={{ font: `400 11.5px/1.5 ${FONT.mono}`, color: C.t3 }}>
-            {silentFor === 0 ? 'just now' : `${silentFor}m ago`}
-          </span>
+      {eyebrow(
+        now > 0 ? `${now} listening now` : `Quiet for ${quietFor}m`,
+        now > 0 ? C.ok : C.warnText,
+        now > 0
+      )}
+      <div style={{ font: `400 12px/1.5 ${FONT.text}`, color: C.t3, marginBottom: 12 }}>
+        {listeners.last3h} in the last 3h · {listeners.last24h} today · each on their own station
+      </div>
+      {nowPlaying.length > 0 && (
+        <div style={{ display: 'grid', gap: 5, marginBottom: 16 }}>
+          {nowPlaying.map((t) => (
+            <div
+              key={t.listener}
+              style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', font: `400 12.5px/1.5 ${FONT.text}` }}
+            >
+              {/* The id, not the email. This is a liveness sample, not a
+                  directory, and it renders beside a track someone is listening
+                  to right now. */}
+              <span style={{ font: `400 11px/1.5 ${FONT.mono}`, color: C.t3, minWidth: 54 }}>user {t.listener}</span>
+              <span style={{ color: '#fff' }}>{t.title}</span>
+              <span style={{ color: C.t2 }}>{t.artist}</span>
+            </div>
+          ))}
         </div>
       )}
     </>

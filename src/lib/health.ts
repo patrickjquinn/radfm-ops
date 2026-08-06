@@ -339,27 +339,31 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     });
 
   /**
-   * THE STATION IS SILENT.
+   * NOBODY IS BEING PLAYED TO.
    *
-   * Rad.FM is a radio station. This is the signal that matters most and the one
-   * nothing else can produce: a station can be completely off air with every
-   * engineering panel green, because nothing throws when nobody is being played
-   * to. No 5xx, no warning, no degraded rate - just silence.
+   * Every user has their own station and their own DJ, so this is not "the
+   * station went off air" - there is no single transmission. It is every station
+   * idle at once, which means the serving path itself has stopped.
    *
-   * Ranked above everything else for that reason. 15 minutes is roughly four
-   * tracks at a typical 3-4 minute length, so it means "several songs should have
-   * played by now and did not" rather than a round number chosen for tidiness.
+   * Ranked above everything else because it has the largest blast radius and the
+   * least detectability: nothing throws when nobody is being played to. No 5xx,
+   * no exception, no degraded rate. Every engineering panel stays green.
+   *
+   * Three hours, not fifteen minutes. Individual listeners stop and start
+   * constantly - somebody closing the app is not an incident - so the threshold
+   * has to be long enough that ALL of them being idle is meaningful rather than
+   * ordinary. 634 registered users and 17 in a typical day means quiet stretches
+   * are normal at this scale, and a tighter threshold would fire nightly.
    */
-  const silentFor = onAir.state === 'ok' ? onAir.data.silentFor : null;
-  const nothingAtAll = onAir.state === 'ok' && silentFor == null;
-  if (nothingAtAll || (silentFor != null && silentFor >= 15))
+  const quietFor = onAir.state === 'ok' ? onAir.data.quietFor : null;
+  const nobodyAtAll = onAir.state === 'ok' && quietFor == null;
+  if (nobodyAtAll)
     signals.unshift({
-      id: 'signal:off-air',
-      title: nothingAtAll ? 'Off air' : `Silent for ${silentFor} minutes`,
-      evidence: nothingAtAll
-        ? 'Nothing played in six hours. Every engineering panel can stay green through this - nothing throws when nobody is being played to.'
-        : 'Roughly four tracks should have played by now. Silence produces no error anywhere else in this dashboard.',
-      metric: nothingAtAll ? 'off air' : `${silentFor}m`,
+      id: 'signal:no-listeners',
+      title: 'Nobody being played to',
+      evidence:
+        'No plays from any listener in three hours. Every station is idle at once, which points at the serving path rather than at one user. Nothing throws when nobody is being played to.',
+      metric: 'silent',
       source: 'Play log',
       sev: 'bad',
       go: 'listening'

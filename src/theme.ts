@@ -112,7 +112,28 @@ export const ELEV = {
  * settle, they do not bounce - and a dashboard is read, not played with.
  * `prefers-reduced-motion` disables all of it in styles.css.
  */
-export const MOTION = '160ms cubic-bezier(0.16, 1, 0.3, 1)';
+export const MOTION = '150ms cubic-bezier(0.4, 0, 0.2, 1)';
+
+/**
+ * The tvOS focus effect, to spec rather than by impression.
+ *
+ * Apple's is a slight SCALE plus a SHADOW LIFT plus the platform's standard
+ * timing: roughly 1.05-1.1x over about 0.15s, ease-in-out. What I shipped first
+ * changed a background colour and called itself a focus effect, which is not the
+ * effect - the whole point is that the focused thing rises toward the viewer.
+ *
+ * 1.012 here, not 1.1. A television is viewed from three metres with a remote
+ * and one item focused at a time; this is a dense dashboard read from fifty
+ * centimetres with a pointer. At 1.1 a row would shove its neighbours around on
+ * every mouse move. The principle transfers, the magnitude does not, and copying
+ * the number instead of the intent would be cargo-culting the platform.
+ */
+export const focusLift = (on: boolean): React.CSSProperties => ({
+  transform: on ? 'scale(1.012)' : 'scale(1)',
+  boxShadow: on ? '0 12px 32px -10px rgba(0,0,0,0.8)' : '0 0 0 rgba(0,0,0,0)',
+  background: on ? 'rgba(255,255,255,0.05)' : undefined,
+  transition: `transform ${MOTION}, box-shadow ${MOTION}, background ${MOTION}`
+});
 
 /**
  * A change, with its direction.
