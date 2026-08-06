@@ -1,0 +1,16 @@
+# Hashed filenames change on every build, so these can be cached forever.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# index.html NAMES those hashes, so it must never be cached. It was served with
+# `public, max-age=0, must-revalidate` and reached the browser as a cf-cache HIT,
+# which meant a deploy did not reach anyone until they hard-reloaded: the tab
+# kept running an old bundle against a new Worker.
+#
+# On a dashboard whose entire job is showing current state, silently serving a
+# stale build is the same failure as a stale number - and worse, because it hides
+# every fix shipped to correct one.
+/*
+  Cache-Control: no-store
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer

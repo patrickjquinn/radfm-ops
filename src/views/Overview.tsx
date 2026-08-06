@@ -28,7 +28,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
   // number on the badge, the number in the verdict and the rows below always
   // agree. Two counts of the same thing that disagree is the failure this whole
   // tool exists to prevent.
-  const { signals, verdict } = useHealth(ctx.hours, demo, ctx.ownerTokenExpiresInDays);
+  const { signals, verdict, domains } = useHealth(ctx.hours, demo, ctx.ownerTokenExpiresInDays);
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
@@ -109,6 +109,74 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
         narrative's whole value is the CONNECTION between signals, and one signal
         has no connections. With none, there is nothing to narrate at all.
       */}
+      {/*
+        The three questions this page claims to answer, answered.
+        
+        It used to carry only the engineering verdict, so listeners could fall to
+        zero and subscriptions could drift and the headline still read "Healthy".
+        It was answering "is the code broken", which is narrower than "is it
+        going well" - and the narrower answer was sitting under the wider label.
+        Every figure comes from health.ts, the same derivation the signals and
+        badges use, so these cannot disagree with the panels they link to.
+      */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))',
+          gap: 1,
+          background: 'rgba(255,255,255,0.08)',
+          border: LINE.edge,
+          borderRadius: 8,
+          overflow: 'hidden'
+        }}
+      >
+        {domains.map((d) => (
+          <button
+            key={d.domain}
+            type="button"
+            onClick={() => ctx.go(d.go)}
+            style={{
+              background: BG.card,
+              padding: '16px 18px 18px',
+              border: 'none',
+              textAlign: 'left',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 7
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={dot(d.tone === 'bad' ? C.bad : d.tone === 'warn' ? C.warn : d.tone === 'dim' ? C.t3 : C.ok)} />
+              <span
+                style={{
+                  font: `600 9.5px/1 ${FONT.text}`,
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: C.t3
+                }}
+              >
+                {d.domain}
+              </span>
+            </span>
+            <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span
+                style={{
+                  ...num,
+                  font: `500 24px/1 ${FONT.mono}`,
+                  letterSpacing: '-0.01em',
+                  color: d.tone === 'bad' ? C.bad : d.tone === 'dim' ? C.t3 : C.t1
+                }}
+              >
+                {d.value}
+              </span>
+              <span style={{ font: `400 11.5px/1.4 ${FONT.text}`, color: C.t3 }}>{d.label}</span>
+            </span>
+            <span style={{ font: `400 11.5px/1.5 ${FONT.text}`, color: C.t2 }}>{d.detail}</span>
+          </button>
+        ))}
+      </div>
+
       {!demo && signals.length >= 2 && (
         <Narrative signals={signals} verdict={verdict.title} hours={ctx.hours} />
       )}

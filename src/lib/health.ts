@@ -7,7 +7,11 @@ import {
   useLogs,
   useSetlistFill,
   useStatus4xx,
-  useVersions
+  useVersions,
+  useAePlays,
+  useRevenue,
+  useCost,
+  useUserList
 } from './api';
 import * as fx from './fixtures';
 import type { Scenario } from './fixtures';
@@ -84,10 +88,21 @@ export type Verdict = {
   stats: { value: string; label: string; tone: 'plain' | 'bad' | 'dim' }[];
 };
 
+export type DomainLine = {
+  domain: 'Engineering' | 'Data' | 'Business';
+  value: string;
+  label: string;
+  detail: string;
+  tone: 'ok' | 'warn' | 'bad' | 'dim';
+  go: ViewId;
+};
+
 export type Health = {
   signals: Signal[];
   verdict: Verdict;
   badges: Partial<Record<ViewId, Badge>>;
+  /** One headline per domain, so the Overview answers all three questions. */
+  domains: DomainLine[];
 };
 
 /**
@@ -110,6 +125,20 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   const setlists = useSetlistFill(logHours, live);
   const traffic = useTraffic(hours);
 
+  /**
+   * The data and business half.
+   *
+   * The verdict used to consider only engineering sources, so listeners could
+   * drop to zero, entitlement drift could reappear, and inference could be one
+   * request from failing closed, and the Overview would still read "Healthy - no
+   * signals open". It was answering "is the code broken", which is a narrower
+   * question than the page claims to answer.
+   */
+  const plays = useAePlays(1, live);
+  const revenue = useRevenue(live);
+  const cost = useCost(24, live);
+  const drift = useUserList('drift', live);
+
   if (demo) return demoHealth(demo);
 
   const sources = [
@@ -121,7 +150,10 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     { s: probe, label: 'Analytics Engine', go: 'rad' as ViewId },
     { s: versions, label: 'Deploy history', go: 'overview' as ViewId },
     { s: setlists, label: 'Setlist fill rate', go: 'logs' as ViewId },
-    { s: traffic, label: 'Request metrics', go: 'traffic' as ViewId }
+    { s: traffic, label: 'Request metrics', go: 'traffic' as ViewId },
+    { s: plays, label: 'Listening', go: 'listening' as ViewId },
+    { s: revenue, label: 'Subscriptions', go: 'growth' as ViewId },
+    { s: cost, label: 'AI spend', go: 'cost' as ViewId }
   ];
 
   const unreadable = sources.filter((x) => x.s.state === 'unavailable');
@@ -287,6 +319,73 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     });
 
   /**
+   * DATA: nobody listened in 24h.
+   *
+   * Not a threshold - a floor. Plays run in the hundreds a day, so zero is not a
+   * quiet day, it is a dead player, and it is invisible everywhere else on this
+   * dashboard: every engineering panel would stay green through it because
+   * nothing throws when nobody arrives.
+   *
+   * Guarded on the log being alive at all. A window before instrumentation
+   * existed is empty for a reason that is not a fault, and firing on that would
+   * be the false-zero mistake in signal form.
+   */
+  const playsToday = plays.state === 'ok' ? Number(plays.data.totals?.plays ?? 0) : null;
+  const playLogLive = plays.state === 'ok' && plays.data.daily.length > 0;
+  if (playsToday === 0 && playLogLive)
+    signals.unshift({
+      id: 'signal:no-plays',
+      title: 'No plays recorded in 24h',
+      evidence:
+        'The play log is receiving on other days, so this is not an instrumentation gap. Nothing throws when nobody listens, so no engineering panel will show this.',
+      metric: '0',
+      source: 'Analytics Engine',
+      sev: 'bad',
+      go: 'listening'
+    });
+
+  /**
+   * OPS: entitlement drift, the original incident returning.
+   *
+   * A stale premium_users row once silently stripped paid features from people
+   * who were still paying. This is the only bulk view of that, and any non-zero
+   * value means somebody is being charged for something they cannot use.
+   */
+  const driftCount = drift.state === 'ok' ? drift.data.users.length : null;
+  if (driftCount != null && driftCount > 0)
+    signals.unshift({
+      id: 'signal:entitlement-drift',
+      title: `${driftCount} account${driftCount === 1 ? '' : 's'} disagree with RevenueCat`,
+      evidence:
+        'Local says premium, RevenueCat says lapsed. A stale cache in this direction once stripped paid features from people who were still paying.',
+      metric: String(driftCount),
+      source: 'D1 + RevenueCat',
+      sev: 'bad',
+      go: 'users'
+    });
+
+  /**
+   * ENG/OPS: inference is approaching the spend limit.
+   *
+   * At the limit AI Gateway returns 429 and the generated panels go dark. That
+   * is the correct behaviour and a bad surprise, so it is worth saying before it
+   * happens rather than after. Warned at half the budget because the run rate is
+   * extrapolated from a partial day and can move quickly.
+   */
+  const spendToday = cost.state === 'ok' ? cost.data.models.reduce((a, m) => a + m.reported, 0) : null;
+  const DAILY_LIMIT = 5;
+  if (spendToday != null && spendToday >= DAILY_LIMIT * 0.5)
+    signals.unshift({
+      id: 'signal:ai-spend',
+      title: 'AI spend approaching the daily limit',
+      evidence: `$${spendToday.toFixed(2)} of the $${DAILY_LIMIT}/day gateway limit. At the limit the gateway returns 429 and the generated panels go dark.`,
+      metric: `$${spendToday.toFixed(2)}`,
+      source: 'AI Gateway',
+      sev: spendToday >= DAILY_LIMIT * 0.8 ? 'bad' : 'warn',
+      go: 'cost'
+    });
+
+  /**
    * One list, derived once, consumed by everything below.
    *
    * A duplicated signal block once pushed the same signal twice AND did it after
@@ -358,7 +457,50 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         ]
       };
 
-  return { signals: open, verdict, badges };
+  /**
+   * One line per domain, from the SAME values the signals used.
+   *
+   * Recomputing these here is how a dashboard ends up contradicting itself, so
+   * every figure below is a variable already derived above.
+   */
+  const listeners = plays.state === 'ok' ? Number(plays.data.totals?.listeners ?? 0) : null;
+  const subs = revenue.state === 'ok' ? revenue.data.activeSubscriptions : null;
+  const expiring = revenue.state === 'ok' ? revenue.data.expiringWithin7d : null;
+
+  const domains: DomainLine[] = [
+    {
+      domain: 'Engineering',
+      value: fourxxTotal != null ? compact(fourxxTotal) : '-',
+      label: '4xx in window',
+      detail:
+        fivexxTotal != null ? `${compact(fivexxTotal)} 5xx · ${warnTotal != null ? compact(warnTotal) : '-'} warnings` : 'traffic unreadable',
+      tone: bad ? 'bad' : open.length ? 'warn' : 'ok',
+      go: 'traffic'
+    },
+    {
+      domain: 'Data',
+      value: playsToday != null ? compact(playsToday) : '-',
+      label: 'plays in 24h',
+      detail: listeners != null ? `${listeners} listener${listeners === 1 ? '' : 's'}` : 'play log unreadable',
+      tone: playsToday === 0 && playLogLive ? 'bad' : playsToday != null ? 'ok' : 'dim',
+      go: 'listening'
+    },
+    {
+      domain: 'Business',
+      value: subs != null ? String(subs) : '-',
+      label: 'subscriptions',
+      detail:
+        driftCount != null && driftCount > 0
+          ? `${driftCount} in drift`
+          : expiring != null
+            ? `${expiring} expiring in 7d`
+            : 'RevenueCat unreadable',
+      tone: driftCount ? 'bad' : subs != null ? 'ok' : 'dim',
+      go: 'growth'
+    }
+  ];
+
+  return { signals: open, verdict, badges, domains };
 }
 
 /**
@@ -378,6 +520,34 @@ export function dedupeSignals(signals: Signal[]): Signal[] {
 function demoHealth(demo: Scenario): Health {
   const signals = fx.signals(demo) as Signal[];
   return {
+    // Fixtures carry the domain strip too, so ?demo= exercises the real layout
+    // rather than a version of the page that only exists in review.
+    domains: [
+      {
+        domain: 'Engineering' as const,
+        value: demo === 'incident' ? '4k' : '457',
+        label: '4xx in window',
+        detail: demo === 'incident' ? '0 5xx · 1.1k warnings' : '0 5xx · 96 warnings',
+        tone: demo === 'incident' ? ('bad' as const) : ('ok' as const),
+        go: 'traffic' as ViewId
+      },
+      {
+        domain: 'Data' as const,
+        value: demo === 'incident' ? '0' : '1.2k',
+        label: 'plays in 24h',
+        detail: demo === 'incident' ? '0 listeners' : '84 listeners',
+        tone: demo === 'incident' ? ('bad' as const) : ('ok' as const),
+        go: 'listening' as ViewId
+      },
+      {
+        domain: 'Business' as const,
+        value: '18',
+        label: 'subscriptions',
+        detail: demo === 'incident' ? '3 in drift' : '2 expiring in 7d',
+        tone: demo === 'incident' ? ('bad' as const) : ('ok' as const),
+        go: 'growth' as ViewId
+      }
+    ],
     signals,
     verdict:
       demo === 'incident'
