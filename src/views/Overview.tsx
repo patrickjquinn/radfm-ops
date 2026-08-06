@@ -115,8 +115,14 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               onClick={() => ctx.go(d.go)}
               // tvOS focus: the thing under the cursor lifts toward you. Cheap,
               // and it turns a wall of equal boxes into something navigable.
-              onMouseEnter={(e) => Object.assign(e.currentTarget.style, focusLift(true))}
-              onMouseLeave={(e) => Object.assign(e.currentTarget.style, { ...focusLift(false), background: BG.card })}
+              onMouseEnter={(e) => {
+                Object.assign(e.currentTarget.style, focusLift(true));
+                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+              }}
+              onMouseLeave={(e) => {
+                Object.assign(e.currentTarget.style, focusLift(false));
+                e.currentTarget.style.background = BG.card;
+              }}
               style={{
                 background: BG.card,
                 padding: '18px 20px 20px',
@@ -180,8 +186,14 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               key={a.title}
               type="button"
               onClick={() => ctx.go(a.go)}
-              onMouseEnter={(e) => Object.assign(e.currentTarget.style, focusLift(true))}
-              onMouseLeave={(e) => Object.assign(e.currentTarget.style, { ...focusLift(false), background: 'transparent' })}
+              onMouseEnter={(e) => {
+                Object.assign(e.currentTarget.style, focusLift(true));
+                e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+              }}
+              onMouseLeave={(e) => {
+                Object.assign(e.currentTarget.style, focusLift(false));
+                e.currentTarget.style.background = 'transparent';
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',

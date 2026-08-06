@@ -503,18 +503,33 @@ app.get('/ae/onair', async (c) => {
   const gate = requireToken(c.env);
   if (gate) return c.json(gate);
 
-  const [live, recent] = await Promise.all([
-    // Distinct listeners in three widening windows. One number cannot separate
-    // "quiet minute" from "nobody has listened all day", and those need
-    // different reactions.
+  /**
+   * One query per window rather than conditional aggregation.
+   *
+   * `count(DISTINCT if(cond, index1, null))` fails: Analytics Engine requires
+   * both IF branches to share a type and returns `422 the 2nd and 3rd arguments
+   * to IF() must have the same type but instead had String and Null`. Three
+   * plain queries are unambiguous, run in parallel, and cost nothing at this
+   * cardinality.
+   */
+  const windows = [
+    { key: 'last30m', sql: "30' MINUTE" },
+    { key: 'last3h', sql: "3' HOUR" },
+    { key: 'last24h', sql: "24' HOUR" }
+  ] as const;
+
+  const [w30, w3h, w24h, plays, recent] = await Promise.all([
+    ...windows.map((w) =>
+      ae(
+        c.env,
+        `SELECT count(DISTINCT index1) AS n FROM rad_fm_events
+         WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '${w.sql}`
+      )
+    ),
     ae(
       c.env,
-      `SELECT
-         count(DISTINCT if(timestamp > now() - INTERVAL '30' MINUTE, index1, null)) AS last30m,
-         count(DISTINCT if(timestamp > now() - INTERVAL '3' HOUR, index1, null)) AS last3h,
-         count(DISTINCT index1) AS last24h,
-         count() AS plays24h
-       FROM rad_fm_events WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '24' HOUR`
+      `SELECT count() AS n FROM rad_fm_events
+       WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '24' HOUR`
     ),
     ae(
       c.env,
@@ -523,21 +538,18 @@ app.get('/ae/onair', async (c) => {
        ORDER BY timestamp DESC LIMIT 12`
     )
   ]);
-  if (live.ok === false) return c.json(live);
-  if (recent.ok === false) return c.json(recent);
+  // Every query, not just the first. A silent partial failure here would report
+  // zero listeners, which is the exact false zero this panel exists to catch.
+  for (const q of [w30, w3h, w24h, plays, recent]) if (q.ok === false) return c.json(q);
 
-  const counts = live.data?.data?.[0] ?? {};
+  const n = (q: any) => Number(q?.data?.data?.[0]?.n ?? 0);
   const rows = recent.data?.data ?? [];
   const lastAt = rows[0]?.timestamp ? Date.parse(String(rows[0].timestamp).replace(' ', 'T') + 'Z') : null;
 
   return c.json({
     ok: true,
-    listeners: {
-      last30m: Number(counts.last30m ?? 0),
-      last3h: Number(counts.last3h ?? 0),
-      last24h: Number(counts.last24h ?? 0)
-    },
-    plays24h: Number(counts.plays24h ?? 0),
+    listeners: { last30m: n(w30), last3h: n(w3h), last24h: n(w24h) },
+    plays24h: n(plays),
     /** Minutes since the last play by ANY listener. Null means none in 3h. */
     quietFor: lastAt ? Math.round((Date.now() - lastAt) / 60_000) : null,
     /**

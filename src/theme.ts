@@ -127,11 +127,17 @@ export const MOTION = '150ms cubic-bezier(0.4, 0, 0.2, 1)';
  * centimetres with a pointer. At 1.1 a row would shove its neighbours around on
  * every mouse move. The principle transfers, the magnitude does not, and copying
  * the number instead of the intent would be cargo-culting the platform.
+ *
+ * It deliberately does NOT touch `background`. The first version returned
+ * `background: undefined` in the resting state, which spread over the caller's
+ * own fill and removed it - the hairline behind a grid then showed through every
+ * cell and the whole strip rendered washed out. A helper that silently clears a
+ * property the caller set is a trap; this one only ever sets the two things a
+ * focus effect is actually made of.
  */
 export const focusLift = (on: boolean): React.CSSProperties => ({
   transform: on ? 'scale(1.012)' : 'scale(1)',
   boxShadow: on ? '0 12px 32px -10px rgba(0,0,0,0.8)' : '0 0 0 rgba(0,0,0,0)',
-  background: on ? 'rgba(255,255,255,0.05)' : undefined,
   transition: `transform ${MOTION}, box-shadow ${MOTION}, background ${MOTION}`
 });
 
