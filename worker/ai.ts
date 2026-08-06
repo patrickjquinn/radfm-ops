@@ -38,6 +38,20 @@ const EMBED_MODEL = '@cf/baai/bge-m3';
 const COSINE_THRESHOLD = 0.86;
 
 /**
+ * Every inference call routes through AI Gateway.
+ *
+ * This is what makes a spend limit real. The AI binding called directly does NOT
+ * pass through the gateway, so a limit configured in the dashboard would apply to
+ * nothing and read as protection that is not there — which is exactly the class
+ * of false reassurance this dashboard exists to eliminate.
+ *
+ * `default` is a real gateway id: AI Gateway creates one on first use, so this
+ * needs no setup step that can be forgotten. It also buys logging and caching for
+ * free, which is how we can show real neuron consumption rather than an estimate.
+ */
+const GATEWAY = { id: 'default' } as const;
+
+/**
  * Strip anything that identifies a person before it reaches inference.
  *
  * Applied to EVERY string that crosses into a model call, without exception and
@@ -240,7 +254,9 @@ app.post('/narrative', async (c) => {
      * and on every number in the UI being rendered from our own values.
      */
     const call = (withSchema: boolean) =>
-      c.env.AI!.run(model, {
+      c.env.AI!.run(
+        model,
+        {
         messages,
         ...(withSchema ? { response_format: { type: 'json_schema', schema: NARRATIVE_SCHEMA } } : {}),
         /**
@@ -253,7 +269,9 @@ app.post('/narrative', async (c) => {
          */
         max_tokens: 500,
         temperature: 0.2
-      } as any);
+        } as any,
+        { gateway: GATEWAY }
+      );
 
     const res: any = await call(true).catch((err: unknown) => {
       console.warn(`[ai] response_format rejected, retrying without: ${String(err).slice(0, 120)}`);
@@ -357,7 +375,11 @@ app.post('/cluster', async (c) => {
 
   const started = Date.now();
   try {
-    const embedded: any = await c.env.AI.run(EMBED_MODEL, { text: groups.map((g) => redact(g.msg)) });
+    const embedded: any = await c.env.AI.run(
+      EMBED_MODEL,
+      { text: groups.map((g) => redact(g.msg)) },
+      { gateway: GATEWAY }
+    );
     const vectors: number[][] = embedded?.data ?? [];
     if (vectors.length !== groups.length) return c.json({ ok: false, reason: 'embedding_shape' });
 
@@ -538,7 +560,11 @@ app.get('/selftest', async (c) => {
 
   for (const m of [...new Set(candidates)]) {
     try {
-      const r: any = await c.env.AI.run(m, { messages: [{ role: 'user', content: 'Reply with the word OK.' }], max_tokens: 12 });
+      const r: any = await c.env.AI.run(
+        m,
+        { messages: [{ role: 'user', content: 'Reply with the word OK.' }], max_tokens: 12 },
+        { gateway: GATEWAY }
+      );
       results[m] = `ok: ${String(r?.response ?? JSON.stringify(r)).slice(0, 60)}`;
     } catch (err) {
       results[m] = `FAIL: ${String(err).slice(0, 140)}`;
@@ -546,7 +572,7 @@ app.get('/selftest', async (c) => {
   }
 
   try {
-    const e: any = await c.env.AI.run(EMBED_MODEL, { text: ['probe'] });
+    const e: any = await c.env.AI.run(EMBED_MODEL, { text: ['probe'] }, { gateway: GATEWAY });
     results[EMBED_MODEL] = `ok: ${e?.data?.[0]?.length ?? 0} dims`;
   } catch (err) {
     results[EMBED_MODEL] = `FAIL: ${String(err).slice(0, 140)}`;
