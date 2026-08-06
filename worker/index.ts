@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { accessAuth } from './access';
 import { cf } from './cf';
-import { backend } from './backend';
+import { backend, probe } from './backend';
 import { type Ctx, isUnconfigured } from './types';
 
 const app = new Hono<Ctx>();
@@ -15,6 +15,7 @@ app.use('/api/*', accessAuth);
 
 app.route('/api/cf', cf); // named Cloudflare API queries; holds the token
 app.route('/api/backend', backend); // proxies api.rad-fm.com/admin/*
+app.route('/api/probe', probe); // diagnostics; deliberately weaker than the proxy, never stronger
 
 /** What the client needs to render its chrome honestly, and nothing more. */
 app.get('/api/session', (c) =>

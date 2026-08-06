@@ -128,4 +128,99 @@ app.all('/*', async (c) => {
   });
 });
 
-export { app as backend };
+/**
+ * The one test that licenses deleting OPS_BACKEND_JWT.
+ *
+ * "Confirm the dashboard still reaches /admin/*" is satisfiable with the bearer
+ * attached, which proves only that requests arrive — nothing about whether Access
+ * carries identity. Acting on that weaker check is what took /admin/* down on
+ * 6 Aug: the bearer was deleted, the Access path had never actually resolved a
+ * role, and every route 404'd with no way to tell which of three causes it was.
+ *
+ * So this asks the real question: with the bearer DELIBERATELY suppressed and only
+ * the forwarded assertion to go on, does the backend resolve a role?
+ *
+ * Suppressing a credential can only ever reduce this request's authority — there
+ * is no configuration in which sending less makes it stronger. That is what makes
+ * a permanent probe safe to leave mounted rather than a one-off branch to delete.
+ *
+ * It exists as a route rather than a curl because Access now blocks direct calls
+ * to /admin/* at the edge, so the dashboard is the only client that can reach
+ * them at all. Diagnosis has to live here.
+ */
+const probe = new Hono<Ctx>();
+
+probe.get('/access', async (c) => {
+  const accessJwt = c.get('accessJwt');
+  if (!accessJwt) {
+    return c.json({
+      ok: false,
+      verdict: 'no_assertion',
+      detail:
+        'No Access assertion on this request, so there is nothing to forward. Under the local dev bypass there is no Access in front of the Worker — run this against the deployed ops.rad-fm.com.'
+    });
+  }
+
+  const target = new URL('/admin/me', c.env.BACKEND_ORIGIN);
+  let res: Response;
+  try {
+    res = await fetch(target, {
+      // No Authorization header, deliberately and unconditionally. That omission IS the test.
+      headers: { Accept: 'application/json', 'Cf-Access-Token': accessJwt }
+    });
+  } catch (err) {
+    return c.json({
+      ok: false,
+      verdict: 'unreachable',
+      detail: err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    });
+  }
+
+  const text = await res.text();
+  let body: unknown = text;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    /* a non-JSON body is itself the finding — keep it as text */
+  }
+
+  // A role is the only pass condition. A 200 carrying no `can` object means the
+  // assertion authenticated but resolved nobody, which is a different bug from a
+  // 404 and must not be reported as success.
+  const can = (body as { can?: Record<string, boolean> })?.can;
+  const ok = res.ok && Boolean(can);
+
+  return c.json({
+    ok,
+    verdict: ok
+      ? 'access_path_carries_identity'
+      : res.status === 404
+        ? 'rejected_404'
+        : res.status === 403
+          ? 'blocked_at_edge_403'
+          : res.ok
+            ? 'authenticated_but_no_role'
+            : 'rejected',
+    status: res.status,
+    can: can ?? null,
+    body,
+    sent: {
+      authorization: false,
+      cfAccessToken: `${accessJwt.length} chars`,
+      caller: c.get('email') ?? null,
+      target: target.toString()
+    },
+    /**
+     * Written into the response rather than left to memory, because the whole
+     * point of the probe is that the person reading it is deciding whether to
+     * delete a credential that is hard to mint again.
+     */
+    meaning: ok
+      ? 'The Access path resolves a role without a bearer. OPS_BACKEND_JWT is now dead weight and can be deleted.'
+      : res.status === 403
+        ? 'Cloudflare Access rejected this at the edge — the Linked App Token policy did not accept the forwarded token. Do NOT delete OPS_BACKEND_JWT.'
+        : 'The backend did not resolve a role from the assertion alone. Deleting OPS_BACKEND_JWT would take /admin/* down. Check the backend logs for the aud it received vs expected.'
+  });
+});
+
+export { app as backend, probe };

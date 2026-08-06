@@ -1,3 +1,15 @@
+> **RESOLVED 6 Aug 2026, backend `16bc30a7`.** The `aud` hypothesis in §3 was correct. Access mints
+> `71df112b…` (Rad.FM Admin API); the backend was checking `b01e1140…` (Rad.FM Ops), the value this
+> repo's previous handover supplied for the manual-verification case. `ACCESS_AUDS` now accepts both.
+> The backend also made the identity claim fall through `email` → `common_name` → `sub`, closing the
+> second candidate in §3, and added logging on the assertion path.
+>
+> Verified from this side by `GET /api/probe/access` — bearer suppressed, assertion only:
+> `{"ok":true,"verdict":"access_path_carries_identity","status":200,"role":"owner"}`.
+>
+> Kept because the §5 sequencing lesson is the durable part, and because the probe that now exists
+> is the test this document argued for.
+
 # Access Linked App Token is not carrying identity — evidence
 
 **For:** `rad-fm-backend`
