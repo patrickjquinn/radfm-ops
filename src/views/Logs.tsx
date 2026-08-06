@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Callout, Generated, Prose, SectionHead, Source } from '../components/primitives';
+import { Callout, Collapsible, Generated, Prose, SectionHead, Source } from '../components/primitives';
 import { useCluster, useLogs, type LogGroup } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -105,9 +105,14 @@ const toWarnRow = (g: LogGroup) => ({
 });
 
 function WarnRows({ rows }: { rows: { count: number; msg: string; window: string; bad?: boolean }[] }) {
+  // Ranked by count, so the answer is nearly always in the first few. Twenty-two
+  // groups is one finding and twenty-one rows of tail.
   return (
-    <>
-      {rows.map((w) => (
+    <Collapsible
+      rows={rows}
+      initial={6}
+      noun="warning groups"
+      render={(w) => (
         <div
           key={w.msg}
           style={{
@@ -129,8 +134,8 @@ function WarnRows({ rows }: { rows: { count: number; msg: string; window: string
             {w.window}
           </span>
         </div>
-      ))}
-    </>
+      )}
+    />
   );
 }
 

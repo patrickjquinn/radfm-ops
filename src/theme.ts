@@ -115,6 +115,22 @@ export const CARD: React.CSSProperties = {
 /** Space BETWEEN cards. Real gaps, never a hairline. */
 export const GAP = 16;
 
+/**
+ * One mapping from state to colour, used everywhere.
+ *
+ * Teal for healthy is kept deliberately. ISA-101 would reserve colour for
+ * abnormal and render normal neutral, and that is the right call in a plant
+ * control room where a screen holds hundreds of values. Here it is a handful,
+ * green reads as reassurance rather than noise, and the product's own accent is
+ * teal - so the standard's REASONING (a deviation must stand out) is met by
+ * amber and red being rare, not by draining the healthy state.
+ *
+ * Where ISA-101 does apply directly is density: Level 1 shows deviations, and
+ * the checks that passed collapse to one line.
+ */
+export const stateColour = (tone: 'ok' | 'warn' | 'bad' | 'dim') =>
+  tone === 'bad' ? C.bad : tone === 'warn' ? C.warn : tone === 'dim' ? C.t3 : C.ok;
+
 export const ELEV = {
   raised: {
     background: 'linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.012) 100%)',

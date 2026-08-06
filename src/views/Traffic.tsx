@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Bar, Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
+import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { useStatus4xx, useTraffic } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -96,8 +96,11 @@ function FourxxRows({
 }) {
   const max = Math.max(...rows.map((r) => r.count), 1);
   return (
-    <>
-      {rows.map((r) => (
+    <Collapsible
+      rows={rows}
+      initial={6}
+      noun="routes"
+      render={(r) => (
         <div key={`${r.route}-${r.status}`} style={{ padding: '11px 0', borderBottom: LINE.row }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 7 }}>
             <span
@@ -141,8 +144,8 @@ function FourxxRows({
           </div>
           <Bar pct={(r.count / max) * 100} color={r.bad ? C.bad : C.warn} />
         </div>
-      ))}
-    </>
+      )}
+    />
   );
 }
 

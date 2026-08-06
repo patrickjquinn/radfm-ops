@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Bar, Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
+import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { statValue, useAdminStats, useAePlays } from '../lib/api';
 
 /**
@@ -190,8 +190,11 @@ function DayRows({ rows }: { rows: { day: string; plays: string; listeners: stri
 function RankRows({ rows }: { rows: { label: string; value: number; note: string }[] }) {
   const max = Math.max(...rows.map((r) => r.value), 1);
   return (
-    <>
-      {rows.map((r, i) => (
+    <Collapsible
+      rows={rows}
+      initial={6}
+      noun="rows"
+      render={(r, i) => (
         <div key={`${r.label}-${i}`} style={{ padding: '10px 0', borderBottom: LINE.row }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 6 }}>
             <span
@@ -228,8 +231,8 @@ function RankRows({ rows }: { rows: { label: string; value: number; note: string
             </span>
           </div>
         </div>
-      ))}
-    </>
+      )}
+    />
   );
 }
 

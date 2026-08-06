@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import type { Ctx } from '../App';
-import { BG, C, CARD, ELEV, FONT, GAP, LINE, MOTION, dot, focusLift, num } from '../theme';
+import { BG, C, CARD, ELEV, FONT, GAP, LINE, MOTION, dot, focusLift, num, stateColour } from '../theme';
 import { Icon } from '../icons';
 import { Generated, KeyRow, SectionHead, Source } from '../components/primitives';
 import {
@@ -164,6 +165,26 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
                   {d.value}
                 </span>
                 <span style={{ font: `400 12px/1.4 ${FONT.text}`, color: C.t3 }}>{d.label}</span>
+                {/*
+                  Direction, only where a comparable prior window exists. Most of
+                  these are null and stay null - an arrow against a baseline that
+                  was never measured is worse than no arrow.
+                */}
+                {d.change && (
+                  <span
+                    style={{
+                      ...num,
+                      font: `500 11.5px/1 ${FONT.mono}`,
+                      color: C.t2,
+                      padding: '3px 6px',
+                      borderRadius: 5,
+                      background: 'rgba(255,255,255,0.05)'
+                    }}
+                  >
+                    {/* Complete days only, so the wording has to say so. */}
+                    {d.change.up ? '↑' : '↓'} {d.change.text.replace('-', '')} vs prior day
+                  </span>
+                )}
               </span>
               <span style={{ font: `400 12px/1.5 ${FONT.text}`, color: C.t2 }}>{d.detail}</span>
             </button>
@@ -478,47 +499,104 @@ function ServiceState({
         setlistCard(setlists)
       ];
 
+  const abnormal = cards.filter((c) => c.tone !== 'ok');
+  const normal = cards.filter((c) => c.tone === 'ok');
+
   return (
-    <div
-      style={{
-        display: 'grid',
-        // Five standing indicators. Sized so they sit on one row on a laptop
-        // rather than leaving a dead cell, which reads as a missing panel.
-        // Separate cards with air between them, not five cells sharing hairlines
-        // inside one box. Sparse and calm is the whole point of the reference.
-        gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,215px),1fr))',
-        gap: GAP
-      }}
-    >
-      {cards.map((c) => (
-        <div key={c.label} style={{ ...CARD, padding: '18px 20px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <span style={dot(c.tone === 'ok' ? C.ok : c.tone === 'bad' ? C.bad : C.warn)} />
-            <span
-              style={{
-                font: `600 10px/1 ${FONT.text}`,
-                letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.5)'
-              }}
-            >
-              {c.label}
-            </span>
-          </div>
-          <div
-            style={{
-              font: `500 15px/1.3 ${FONT.text}`,
-              letterSpacing: '-0.012em',
-              color: c.tone === 'ok' ? C.ok : c.tone === 'bad' ? C.bad : C.warnText
-            }}
-          >
-            {c.value}
-          </div>
-          <div style={{ font: `400 11.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.45)', marginTop: 5 }}>
-            {c.detail}
-          </div>
+    <section style={{ display: 'grid', gap: 12 }}>
+      {/*
+        ISA-101 Level 1: show what DEVIATES, collapse what does not.
+        
+        This rendered five cards every time, four of them saying nothing had
+        happened. At 3am that is four things to read before reaching the one that
+        matters. The passed checks stay on the page - "checked and normal" is a
+        different claim from "not checked", and this dashboard does not get to
+        blur those - but they take one line instead of four.
+      */}
+      {abnormal.length > 0 && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,215px),1fr))',
+            gap: GAP
+          }}
+        >
+          {abnormal.map((c) => (
+            <div key={c.label} style={{ ...CARD, padding: '18px 20px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <span style={dot(stateColour(c.tone))} />
+                <span
+                  style={{ font: `600 10px/1 ${FONT.text}`, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.t3 }}
+                >
+                  {c.label}
+                </span>
+              </div>
+              <div style={{ font: `500 19px/1.25 ${FONT.display}`, letterSpacing: '-0.018em', color: stateColour(c.tone) }}>
+                {c.value}
+              </div>
+              <div style={{ font: `400 11.5px/1.5 ${FONT.text}`, color: C.t3, marginTop: 5 }}>{c.detail}</div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+
+      {normal.length > 0 && <NormalChecks cards={normal} />}
+    </section>
+  );
+}
+
+/**
+ * The checks that passed, in one line until asked for.
+ *
+ * Safe to collapse precisely because only ok-toned cards reach it: hiding
+ * "checked and normal" costs an operator nothing at a glance, whereas hiding
+ * "could not check" would bury a real gap. That distinction is the whole reason
+ * this is filtered on tone rather than on some idea of importance.
+ */
+function NormalChecks({ cards }: { cards: { label: string; value: string; detail: string }[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ ...CARD, padding: open ? '16px 20px 10px' : '15px 20px' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          width: '100%',
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          textAlign: 'left'
+        }}
+      >
+        <span style={dot(C.ok)} />
+        <span style={{ font: `400 13px/1.4 ${FONT.text}`, color: C.t2, flex: 1, minWidth: 0 }}>
+          {cards.length} service check{cards.length === 1 ? '' : 's'} normal
+        </span>
+        <span style={{ font: `400 11.5px/1 ${FONT.mono}`, color: C.t3 }}>{open ? 'hide' : 'show'}</span>
+      </button>
+      {open && (
+        <div style={{ paddingTop: 12 }}>
+          {cards.map((c) => (
+            <div
+              key={c.label}
+              style={{ display: 'flex', gap: 14, padding: '9px 0', borderBottom: LINE.row, alignItems: 'baseline', flexWrap: 'wrap' }}
+            >
+              <span
+                style={{ font: `600 9.5px/1 ${FONT.text}`, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.t3, width: 150 }}
+              >
+                {c.label}
+              </span>
+              <span style={{ font: `400 13px/1.4 ${FONT.text}`, color: C.ok, flex: '0 0 auto' }}>{c.value}</span>
+              <span style={{ font: `400 12px/1.4 ${FONT.text}`, color: C.t3, flex: 1, minWidth: 0 }}>{c.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

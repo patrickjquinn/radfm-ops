@@ -1,4 +1,5 @@
-import { BG, C, CARD, FONT, GAP, LINE, bar, dot, num } from '../theme';
+import { useState } from 'react';
+import { BG, C, CARD, FONT, GAP, LINE, MOTION, bar, dot, num } from '../theme';
 import { Icon } from '../icons';
 import { reasonText, type Loaded } from '../lib/api';
 
@@ -319,5 +320,67 @@ export function KeyRow({
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * Show the head of a long list, keep the tail one click away.
+ *
+ * Shneiderman's mantra for information-seeking - overview first, zoom and
+ * filter, details on demand - and the practical reason at 3am: a table of forty
+ * warning groups is not forty pieces of information, it is one piece of
+ * information and thirty-nine rows of noise. The rows are ranked, so the answer
+ * is almost always in the first few.
+ *
+ * The count of what is hidden is always shown. A list that quietly truncates
+ * makes a partial view look complete, which is the same failure as a total that
+ * is really a top-N - and this dashboard has already shipped that bug once.
+ */
+export function Collapsible<T>({
+  rows,
+  initial = 6,
+  render,
+  noun
+}: {
+  rows: T[];
+  initial?: number;
+  render: (row: T, i: number) => React.ReactNode;
+  noun: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const hidden = rows.length - initial;
+  const shown = open ? rows : rows.slice(0, initial);
+
+  return (
+    <>
+      {shown.map(render)}
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          onMouseEnter={(e) => (e.currentTarget.style.color = C.t1)}
+          onMouseLeave={(e) => (e.currentTarget.style.color = C.t3)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            width: '100%',
+            padding: '12px 0',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            font: `400 12px/1 ${FONT.mono}`,
+            color: C.t3,
+            transition: `color ${MOTION}`
+          }}
+        >
+          {open ? `Show fewer` : `${hidden} more ${noun}`}
+          <span style={{ display: 'flex', transform: open ? 'rotate(-90deg)' : 'rotate(90deg)', transition: `transform ${MOTION}` }}>
+            <Icon name="chevron.right" size={10} />
+          </span>
+        </button>
+      )}
+    </>
   );
 }

@@ -15,6 +15,7 @@ import {
   useOnAir
 } from './api';
 import * as fx from './fixtures';
+import { delta } from '../theme';
 import type { Scenario } from './fixtures';
 import type { ViewId } from '../App';
 
@@ -96,6 +97,15 @@ export type DomainLine = {
   detail: string;
   tone: 'ok' | 'warn' | 'bad' | 'dim';
   go: ViewId;
+  /**
+   * Change against the previous comparable period, or null when there is none.
+   *
+   * Null is the common case and stays null on purpose. A delta needs a prior
+   * window that actually existed and is genuinely comparable, and for most of
+   * these there is not one - inventing a baseline to draw an arrow against is
+   * the false-zero mistake with a direction attached.
+   */
+  change: { text: string; up: boolean } | null;
 };
 
 /**
@@ -153,6 +163,10 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
    * question than the page claims to answer.
    */
   const plays = useAePlays(1, live);
+  // A separate multi-day read purely for the comparison. The 1-day window above
+  // buckets into partial days, and comparing a full day against a partial one is
+  // how a -10% change renders as +323%.
+  const playsTrend = useAePlays(4, live);
   const revenue = useRevenue(live);
   const cost = useCost(24, live);
   const drift = useUserList('drift', live);
@@ -518,6 +532,27 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   const subs = revenue.state === 'ok' ? revenue.data.activeSubscriptions : null;
   const expiring = revenue.state === 'ok' ? revenue.data.expiringWithin7d : null;
 
+  /**
+   * The last two COMPLETE days, never today.
+   *
+   * The first version compared the rolling 24h total against the previous bucket
+   * of that same window, which is a full day against a partial one. It rendered
+   * a real -10% as +323% - a fabricated comparison dressed as insight, on the
+   * headline of the page, which is precisely the failure this dashboard exists
+   * to prevent.
+   *
+   * Today is always partial, so it is dropped. Two complete days or nothing, and
+   * at present there is exactly one complete day of history, so this correctly
+   * shows nothing at all.
+   */
+  const trend = playsTrend.state === 'ok' ? playsTrend.data.daily : [];
+  const today = new Date().toISOString().slice(0, 10);
+  const complete = trend.filter((d) => String(d.day).slice(0, 10) < today);
+  const playsChange =
+    complete.length >= 2
+      ? delta(Number(complete[complete.length - 1]?.plays ?? 0), Number(complete[complete.length - 2]?.plays ?? 0))
+      : null;
+
   const domains: DomainLine[] = [
     {
       domain: 'Engineering',
@@ -526,7 +561,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       detail:
         fivexxTotal != null ? `${compact(fivexxTotal)} 5xx · ${warnTotal != null ? compact(warnTotal) : '-'} warnings` : 'traffic unreadable',
       tone: bad ? 'bad' : open.length ? 'warn' : 'ok',
-      go: 'traffic'
+      go: 'traffic',
+      change: null
     },
     {
       domain: 'Data',
@@ -534,7 +570,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       label: 'plays in 24h',
       detail: listeners != null ? `${listeners} listener${listeners === 1 ? '' : 's'}` : 'play log unreadable',
       tone: playsToday === 0 && playLogLive ? 'bad' : playsToday != null ? 'ok' : 'dim',
-      go: 'listening'
+      go: 'listening',
+      change: playsChange ? { text: playsChange.text, up: playsChange.up } : null
     },
     {
       domain: 'Business',
@@ -547,7 +584,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
             ? `${expiring} expiring in 7d`
             : 'RevenueCat unreadable',
       tone: driftCount ? 'bad' : subs != null ? 'ok' : 'dim',
-      go: 'growth'
+      go: 'growth',
+      change: null
     }
   ];
 
@@ -609,7 +647,8 @@ function demoHealth(demo: Scenario): Health {
         label: '4xx in window',
         detail: demo === 'incident' ? '0 5xx · 1.1k warnings' : '0 5xx · 96 warnings',
         tone: demo === 'incident' ? ('bad' as const) : ('ok' as const),
-        go: 'traffic' as ViewId
+        go: 'traffic' as ViewId,
+        change: null
       },
       {
         domain: 'Data' as const,
@@ -617,7 +656,8 @@ function demoHealth(demo: Scenario): Health {
         label: 'plays in 24h',
         detail: demo === 'incident' ? '0 listeners' : '84 listeners',
         tone: demo === 'incident' ? ('bad' as const) : ('ok' as const),
-        go: 'listening' as ViewId
+        go: 'listening' as ViewId,
+        change: { text: demo === 'incident' ? '-98%' : '+12%', up: demo !== 'incident' }
       },
       {
         domain: 'Business' as const,
@@ -625,7 +665,8 @@ function demoHealth(demo: Scenario): Health {
         label: 'subscriptions',
         detail: demo === 'incident' ? '3 in drift' : '2 expiring in 7d',
         tone: demo === 'incident' ? ('bad' as const) : ('ok' as const),
-        go: 'growth' as ViewId
+        go: 'growth' as ViewId,
+        change: null
       }
     ],
     attention: [
