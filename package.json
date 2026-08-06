@@ -16,6 +16,7 @@
     "@carbon/icons-react": "^11.85.0",
     "@tanstack/react-query": "^5.62.0",
     "hono": "^4.6.14",
+    "jose": "^6.2.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

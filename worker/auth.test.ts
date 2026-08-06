@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { expiresInDays } from './index';
+import { expectedIssuer, readAccessToken, staleIssuerHint } from './access';
 import { isUnconfigured, UNCONFIGURED_AUD } from './types';
 
 /**
@@ -108,5 +109,75 @@ describe('owner token guard', () => {
 
   it('is inert when no token is held', () => {
     expect(ownerTokenFor({ OPS_OWNER_EMAIL: 'a@b.com' }, 'a@b.com')).toBeUndefined();
+  });
+});
+
+describe('readAccessToken', () => {
+  it('prefers the header Access actually sets', () => {
+    expect(readAccessToken('from-header', 'CF_Authorization=from-cookie')).toBe('from-header');
+  });
+
+  it('falls back to the CF_Authorization cookie', () => {
+    expect(readAccessToken(undefined, 'other=x; CF_Authorization=abc.def.ghi; more=y')).toBe('abc.def.ghi');
+  });
+
+  it('returns null when neither is present, so the caller 401s rather than verifying ""', () => {
+    expect(readAccessToken(undefined, null)).toBeNull();
+    expect(readAccessToken(undefined, 'unrelated=1')).toBeNull();
+  });
+});
+
+describe('staleIssuerHint', () => {
+  const tokenWithIss = (iss: string) => {
+    const payload = btoa(JSON.stringify({ iss, aud: ['x'] }))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    return `header.${payload}.sig`;
+  };
+
+  // The exact failure that took the dashboard down after the team rename: a valid
+  // signature and the right aud, rejected on iss alone, presenting as an outage.
+  it('names both issuers and points at ACCESS_ISSUER, not at logging out', () => {
+    const hint = staleIssuerHint(
+      tokenWithIss('https://long-wildflower-f4fb.cloudflareaccess.com'),
+      'https://radfm.cloudflareaccess.com'
+    );
+    expect(hint).toContain('long-wildflower-f4fb');
+    expect(hint).toContain('radfm.cloudflareaccess.com');
+    expect(hint).toMatch(/ACCESS_ISSUER/);
+    // Logging out does NOT fix this — the issuer belongs to the application.
+    expect(hint).toMatch(/does not resolve by logging out/i);
+  });
+
+  it('says nothing when the issuer is the one we expect', () => {
+    expect(
+      staleIssuerHint(tokenWithIss('https://radfm.cloudflareaccess.com'), 'https://radfm.cloudflareaccess.com')
+    ).toBe('');
+  });
+
+  it('says nothing rather than throwing on a malformed token', () => {
+    expect(staleIssuerHint('not-a-jwt', 'https://radfm.cloudflareaccess.com')).toBe('');
+    expect(staleIssuerHint('a.!!!.c', 'https://radfm.cloudflareaccess.com')).toBe('');
+  });
+});
+
+describe('expectedIssuer', () => {
+  it('uses ACCESS_ISSUER when the app issuer has diverged from the team domain', () => {
+    expect(
+      expectedIssuer({
+        ACCESS_ISSUER: 'https://long-wildflower-f4fb.cloudflareaccess.com',
+        ACCESS_TEAM_DOMAIN: 'radfm.cloudflareaccess.com'
+      })
+    ).toBe('https://long-wildflower-f4fb.cloudflareaccess.com');
+  });
+
+  it('defaults to the team domain, so an unrenamed account needs no config', () => {
+    expect(expectedIssuer({ ACCESS_TEAM_DOMAIN: 'radfm.cloudflareaccess.com' })).toBe(
+      'https://radfm.cloudflareaccess.com'
+    );
+    expect(expectedIssuer({ ACCESS_ISSUER: '  ', ACCESS_TEAM_DOMAIN: 'radfm.cloudflareaccess.com' })).toBe(
+      'https://radfm.cloudflareaccess.com'
+    );
   });
 });

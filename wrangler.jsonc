@@ -42,7 +42,15 @@
     // Worker fetches the JWKS from — so a rename and a redeploy are one operation,
     // not two. Between them, every /api route 401s.
     "ACCESS_TEAM_DOMAIN": "radfm.cloudflareaccess.com",
-    "ACCESS_AUD": "b01e1140660d0a36b16f6e988774ac57e1c456bac1d36cb79108cee28450fe88"
+    "ACCESS_AUD": "b01e1140660d0a36b16f6e988774ac57e1c456bac1d36cb79108cee28450fe88",
+
+    // NOT the same as ACCESS_TEAM_DOMAIN, and this is the trap. Access pins an
+    // application's `iss` at creation and does NOT update it when the team is
+    // renamed. This app was created under long-wildflower-f4fb, so it still issues
+    // tokens with that issuer even though the team is now `radfm` — verified by
+    // renaming, logging out, logging back in, and reading the claim. The JWKS is
+    // fetched from ACCESS_TEAM_DOMAIN; the issuer is checked against this.
+    "ACCESS_ISSUER": "https://long-wildflower-f4fb.cloudflareaccess.com"
   }
 
   // NO d1_databases binding. This is deliberate and load-bearing.

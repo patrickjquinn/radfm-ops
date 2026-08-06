@@ -65,6 +65,7 @@ app.all('/*', async (c) => {
   //      original objection answered: add a second person to the Access policy and
   //      they do NOT inherit this token, they supply their own.
   //   3. Local dev.
+  const accessJwt = c.get('accessJwt');
   const ownerEmail = c.env.OPS_OWNER_EMAIL?.trim().toLowerCase();
   const caller = c.get('email')?.trim().toLowerCase();
   const ownerToken = ownerEmail && caller && caller === ownerEmail ? c.env.OPS_BACKEND_JWT : undefined;
@@ -84,6 +85,14 @@ app.all('/*', async (c) => {
     headers: {
       Authorization: `Bearer ${jwt}`,
       Accept: 'application/json',
+      // Access Linked App Token. Forwarding the verified assertion lets an Access
+      // application in front of api.rad-fm.com/admin/* validate that this request
+      // came from THIS dashboard, and attribute it to the original human in the
+      // audit log — no shared secret, no minted token, nothing to expire.
+      //
+      // Sent unconditionally and harmlessly ignored until that application exists,
+      // so the backend side can land without a redeploy here.
+      ...(accessJwt ? { 'Cf-Access-Token': accessJwt } : {}),
       ...(method === 'PUT' ? { 'Content-Type': 'application/json' } : {})
     },
     body: method === 'PUT' ? await c.req.text() : undefined

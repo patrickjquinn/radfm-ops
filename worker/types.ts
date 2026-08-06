@@ -6,6 +6,14 @@ export type Bindings = {
   BACKEND_SCRIPT_NAME: string;
   ACCESS_TEAM_DOMAIN: string;
   ACCESS_AUD: string;
+  /**
+   * The `iss` to expect, when it differs from the team domain.
+   *
+   * Access pins an application's issuer at creation and does not follow a team
+   * rename, so these two diverge the moment you rename. Optional: defaults to the
+   * team domain, which is correct for any account that has never been renamed.
+   */
+  ACCESS_ISSUER?: string;
   /** Local dev only: a Rad.FM user JWT so /admin/* can be exercised without Access. */
   DEV_BACKEND_JWT?: string;
   /**
@@ -26,6 +34,12 @@ export type Bindings = {
 
 export type Variables = {
   email: string;
+  /**
+   * The verified Access assertion, kept verbatim so the /admin/* proxy can forward
+   * it as Cf-Access-Token. See worker/backend.ts — this is what lets the backend
+   * attribute a request to the human rather than to a shared credential.
+   */
+  accessJwt?: string;
 };
 
 export type Ctx = { Bindings: Bindings; Variables: Variables };
