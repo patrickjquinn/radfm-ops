@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { reasonText, statValue } from './api';
 import { dedupeSignals, type Signal } from './health';
+import { STATE, STATE_MEANING } from './vocabulary';
 
 /**
  * The contract between this client and the Rad.FM backend.
@@ -184,5 +185,46 @@ describe('dedupeSignals', () => {
   it('leaves a list with no duplicates untouched', () => {
     const list = [sig('a'), sig('b'), sig('c')];
     expect(dedupeSignals(list)).toEqual(list);
+  });
+});
+
+/**
+ * ISO 9241-112 asks for internal consistency: one state, one presentation.
+ *
+ * An audit found twelve labels in use for "we do not have a number", several
+ * saying the same thing in different words. The fix is not one word for all of
+ * them - this dashboard exists because "we could not ask" and "the answer is
+ * zero" were once shown identically, and collapsing these would repeat that
+ * mistake in the other direction.
+ */
+describe('state vocabulary', () => {
+  it('keeps the five states genuinely distinct', () => {
+    const values = Object.values(STATE);
+    expect(new Set(values).size).toBe(values.length);
+  });
+
+  it('never uses a synonym that was folded in', () => {
+    // Each of these once appeared alongside a different word for the same state.
+    const folded = ['cannot verify', 'unpriced', 'no premium data', 'Unknown', 'Unavailable', 'Unverified'];
+    for (const word of folded) {
+      expect(Object.values(STATE), `"${word}" is a synonym of an existing state`).not.toContain(word);
+    }
+  });
+
+  it('gives every state a meaning an operator can act on', () => {
+    // ISO 24495-1: readers must be able to USE what they find. A label says what
+    // happened; it does not say whether to act.
+    for (const key of Object.keys(STATE) as (keyof typeof STATE)[]) {
+      expect(STATE_MEANING[key], `${key} has no meaning`).toBeTruthy();
+      expect(STATE_MEANING[key].length).toBeLessThan(90);
+    }
+  });
+
+  it('distinguishes "could not ask" from "did not ask"', () => {
+    // The distinction the whole product rests on. If these ever collapse, a
+    // deliberate non-call reads as a failure, or a failure reads as fine.
+    expect(STATE.unavailable).not.toBe(STATE.notChecked);
+    expect(STATE_MEANING.unavailable).toMatch(/needs looking at/i);
+    expect(STATE_MEANING.notChecked).toMatch(/nothing is wrong/i);
   });
 });

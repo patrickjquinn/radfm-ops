@@ -64,11 +64,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
         {!demo && (
           <div style={{ padding: '11px 0 0' }}>
             <Prose max={78}>
-              Outcomes are shown as the provider recorded them rather than sorted into pass and fail. This column
-              previously tested the outcome against the literal string{' '}
-              <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>'ok'</code>, which the
-              backend never writes, so a working provider read as 100% failure. Nothing here has to guess a success
-              token now.
+              Outcomes are shown as the provider recorded them, not sorted into pass and fail.
             </Prose>
           </div>
         )}

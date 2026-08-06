@@ -2,6 +2,7 @@ import type { Ctx } from '../App';
 import { C, FONT, LINE, num } from '../theme';
 import { Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { useArtwork, useCost, type CostRow } from '../lib/api';
+import { STATE } from '../lib/vocabulary';
 
 /**
  * What this system costs to run, and specifically what the AI costs.
@@ -24,9 +25,8 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <Callout tone="teal" icon>
-        Two estimates per model, never one. AI Gateway's cost is its own best-effort figure; ours is computed from the
-        provider's published per-token rate. Agreement is evidence, and a gap is usually prompt caching - our number
-        prices every input token at the uncached rate, so it reads high on purpose.
+        Two estimates per model, never one. The gateway's is best-effort; ours uses the provider's published
+        per-token rate. A gap is usually prompt caching - ours prices every input token uncached, so it reads high.
       </Callout>
 
       <Source data={cost} what="AI spend">
@@ -127,7 +127,7 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ ...num, font: `500 19px/1 ${FONT.mono}`, color: artwork.data.images ? C.t1 : C.t3 }}>
-                      {artwork.data.images === 0 ? 'none yet' : money(artwork.data.cost)}
+                      {artwork.data.images === 0 ? STATE.noneYet : money(artwork.data.cost)}
                     </div>
                     <div style={{ font: `400 10px/1.5 ${FONT.text}`, color: C.t3, marginTop: 5 }}>
                       {artwork.data.images.toLocaleString()} image{artwork.data.images === 1 ? '' : 's'}
@@ -265,7 +265,7 @@ function Row({ m }: { m: CostRow }) {
       <Cell w={84} v={m.unpriced ? 'not priced' : money(m.reported)} color={m.unpriced ? C.warnText : C.t1} />
       <Cell
         w={84}
-        v={m.computed == null ? (m.perImage ? 'per image' : 'unpriced') : money(m.computed)}
+        v={m.computed == null ? 'not priced' : money(m.computed)}
         color={m.computed == null ? C.t3 : C.t1}
       />
       <Cell

@@ -6,6 +6,7 @@ import { Callout, Prose, SectionHead } from '../components/primitives';
 import { reasonText, useAiGateway, useConfig, useSession, useSetConfig, type ConfigEntry } from '../lib/api';
 import * as fx from '../lib/fixtures';
 import { WEIGHTS_SOURCE, weights } from '../lib/constants';
+import { STATE } from '../lib/vocabulary';
 
 /**
  * Tier 1 runtime config.
@@ -318,7 +319,7 @@ function Inference() {
       ? { value: 'reading…', tone: 'plain' }
       : gw.state === 'unavailable'
         ? {
-            value: 'cannot verify',
+            value: STATE.unavailable,
             tone: 'warn',
             note:
               gw.reason === 'bad_token'
@@ -326,7 +327,7 @@ function Inference() {
                 : reasonText(gw.reason, gw.detail)
           }
         : gw.data.limits == null
-          ? { value: 'cannot verify', tone: 'warn', note: 'the gateway returned a shape this client does not recognise' }
+          ? { value: STATE.unavailable, tone: 'warn', note: 'the gateway returned a shape this client does not recognise' }
           : gw.data.limits.length === 0
             ? { value: 'no limit set', tone: 'warn' }
             : {
@@ -381,11 +382,8 @@ function Inference() {
       <SectionHead title="Inference" meta="Workers AI" />
       <div style={{ padding: '11px 0 4px' }}>
         <Prose>
-          The model id is a Tier 1 value because models get deprecated on Cloudflare's cadence, not ours. The spend
-          limit exists so an unbounded loop against an inference endpoint fails closed - not because cost is expected;
-          at these volumes the generated panels run inside the free daily allocation. Every row here is read from the
-          running Worker or from the gateway itself, never asserted - a panel that claims a safety control is on
-          without checking would go on saying so after someone turned it off.
+          Every row is read from the running Worker or the gateway, never asserted. A panel that claims a safety
+          control is on without checking would keep saying so after someone turned it off.
         </Prose>
       </div>
       {rows.map((r) => (

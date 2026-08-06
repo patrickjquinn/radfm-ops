@@ -36,9 +36,9 @@ export default function Audit({ ctx }: { ctx: Ctx }) {
               if (!rows.length)
                 return (
                   <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: C.warnText, maxWidth: '70ch' }}>
-                    No admin actions in this window. Config writes and the reconcile cron both write here, so an empty
-                    table means either nothing has happened recently or the rows are not being written - and this view
-                    cannot tell those apart. Check the cron card on Overview before concluding it is quiet.
+                    No admin actions in this window. Config writes and the reconcile cron both write here, so this
+                    means either nothing happened or nothing was written - and this view cannot tell those apart.
+                    Check the cron card on Overview first.
                   </div>
                 );
               return <Rows rows={rows} />;

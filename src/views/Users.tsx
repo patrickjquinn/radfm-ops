@@ -4,6 +4,7 @@ import { BG, C, FONT, LINE } from '../theme';
 import { Icon } from '../icons';
 import { ActionButton, Prose, SectionHead, Source, type Tone, toneColor } from '../components/primitives';
 import { statValue, useAdminStats, useEntitlement, useUserList, useUserLookup } from '../lib/api';
+import { STATE } from '../lib/vocabulary';
 import * as fx from '../lib/fixtures';
 
 export type UserFilter = 'all' | 'premium' | 'drift' | 'admin';
@@ -744,6 +745,6 @@ const Flag = ({
       color: value == null ? C.t3 : value ? C.ok : C.t2
     }}
   >
-    {value == null ? 'not checked' : value ? yes : no}
+    {value == null ? STATE.notChecked : value ? yes : no}
   </span>
 );

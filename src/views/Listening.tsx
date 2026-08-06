@@ -18,9 +18,10 @@ import { statValue, useAdminStats, useAePlays } from '../lib/api';
  * counts "current state" and refuses to call 24h activity DAU.
  */
 export default function Listening({ ctx }: { ctx: Ctx }) {
-  // Days, not hours. This view is about trends, and the header range tops out at
-  // 7d which is shorter than the question deserves.
-  const days = ctx.hours <= 24 ? 7 : ctx.hours <= 72 ? 14 : 30;
+  // The header now offers day ranges on this view, so the window shown is the
+  // window asked for. It used to widen 24h to 7d silently and explain itself in
+  // the panel, which was honest about the result and misleading about the control.
+  const days = Math.round(ctx.hours / 24);
   const plays = useAePlays(days, !ctx.demo);
   const stats = useAdminStats(!ctx.demo);
   const registered = stats.state === 'ok' ? statValue(stats.data.users) : null;

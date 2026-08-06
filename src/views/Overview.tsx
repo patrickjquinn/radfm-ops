@@ -13,6 +13,7 @@ import {
   useVersions
 } from '../lib/api';
 import { useHealth, type Signal } from '../lib/health';
+import { STATE } from '../lib/vocabulary';
 import * as fx from '../lib/fixtures';
 
 export default function Overview({ ctx }: { ctx: Ctx }) {
@@ -330,7 +331,7 @@ function ServiceState({
           tone: demo === 'incident' ? ('bad' as const) : ('ok' as const)
         },
         { label: 'Data quality', value: '0 rows', detail: 'past_plays missing played_at', tone: 'ok' as const },
-        { label: 'Analytics Engine', value: 'Unverified', detail: 'never queried · needs scoped token', tone: 'warn' as const },
+        { label: 'Analytics Engine', value: STATE.unverified, detail: 'never queried · needs scoped token', tone: 'warn' as const },
         {
           label: 'Setlist fill rate',
           value: demo === 'incident' ? '62%' : '75%',
@@ -341,7 +342,7 @@ function ServiceState({
     : [
         {
           label: 'Migration 0003',
-          value: statsState?.state === 'ok' ? 'Applied' : 'Unknown',
+          value: statsState?.state === 'ok' ? 'Applied' : STATE.unavailable,
           detail:
             statsState?.state === 'ok'
               ? 'admin_users readable, /admin/* responding'
@@ -351,13 +352,13 @@ function ServiceState({
         cronCard(cron),
         {
           label: 'Data quality',
-          value: missing === undefined ? 'Unavailable' : `${missing} rows`,
+          value: missing === undefined ? STATE.unavailable : `${missing} rows`,
           detail: 'past_plays missing played_at',
           tone: missing === undefined ? ('warn' as const) : missing === 0 ? ('ok' as const) : ('bad' as const)
         },
         {
           label: 'Analytics Engine',
-          value: probeOk ? 'Receiving' : 'Unverified',
+          value: probeOk ? 'Receiving' : STATE.unverified,
           detail: probeOk ? 'probe returned rows' : 'never queried · needs scoped token',
           tone: probeOk ? ('ok' as const) : ('warn' as const)
         },
@@ -421,7 +422,7 @@ function ServiceState({
  */
 function cronCard(cron: ReturnType<typeof useCron>) {
   if (cron.state !== 'ok')
-    return { label: 'RevenueCat cron', value: 'Unavailable', detail: 'could not read status', tone: 'warn' as const };
+    return { label: 'RevenueCat cron', value: STATE.unavailable, detail: 'could not read status', tone: 'warn' as const };
 
   const { lastRunAt, outcome, rowsReconciled, schedule } = cron.data;
   const cadence = schedule ?? '0 */6 * * *';
@@ -457,7 +458,7 @@ function setlistCard(setlists: ReturnType<typeof useSetlistFill>) {
   if (setlists.state !== 'ok')
     return {
       label: 'Setlist fill rate',
-      value: 'Unavailable',
+      value: STATE.unavailable,
       detail: 'could not read /admin/metrics/setlists',
       tone: 'warn' as const
     };

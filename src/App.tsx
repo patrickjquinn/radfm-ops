@@ -32,9 +32,34 @@ export type ViewId =
   | 'stations'
   | 'config'
   | 'audit';
-export type Range = '6h' | '24h' | '3d' | '7d';
+export type Range = '6h' | '24h' | '3d' | '7d' | '30d' | '90d';
 
-export const RANGE_HOURS: Record<Range, number> = { '6h': 6, '24h': 24, '3d': 72, '7d': 168 };
+export const RANGE_HOURS: Record<Range, number> = {
+  '6h': 6,
+  '24h': 24,
+  '3d': 72,
+  '7d': 168,
+  '30d': 720,
+  '90d': 2160
+};
+
+/**
+ * The ranges each view can honestly answer, not one set for the whole product.
+ *
+ * The engineering views read Observability, which retains 3 days, so offering
+ * 30d there would be a control that silently returns less than it promises. The
+ * data views read D1 and an append-only log where a 6h window is too short to
+ * mean anything - Listening was quietly widening 24h to "the last 7 days" and
+ * saying so in the panel, which is honest about the result but leaves the
+ * control implying a precision it never had.
+ *
+ * A control that cannot do what it says is worse than a missing control: it is
+ * the same failure as a number you cannot stand behind, wearing a button.
+ */
+const DATA_VIEWS: ViewId[] = ['listening', 'growth', 'cost'];
+const ENG_RANGES: Range[] = ['6h', '24h', '3d', '7d'];
+const DATA_RANGES: Range[] = ['7d', '30d', '90d'];
+export const rangesFor = (view: ViewId): Range[] => (DATA_VIEWS.includes(view) ? DATA_RANGES : ENG_RANGES);
 
 const TITLES: Record<ViewId, [string, string]> = {
   overview: ['Overview', 'The ten-second answer. Signals are ranked by blast radius, not by recency.'],
@@ -167,12 +192,38 @@ export default function App() {
   const email = demo ? 'patrick.jm.quinn@gmail.com' : session.state === 'ok' ? session.data.email : '-';
 
   // Observability retains 3 days - surfaced rather than silently truncated.
-  const rangeExceedsRetention = range === '7d';
+  // Observability retains 3 days. Only the engineering views read it, so the
+  // banner belongs to them - the data views reach further by design.
+  const rangeExceedsRetention = !DATA_VIEWS.includes(view) && range === '7d';
 
   const ownerTokenExpiresInDays =
     session.state === 'ok' ? session.data.ownerTokenExpiresInDays : null;
-  const ctx: Ctx = { view, go: setView, range, hours: RANGE_HOURS[range], demo, can, ownerTokenExpiresInDays };
-  const health = useHealth(RANGE_HOURS[range], demo, ownerTokenExpiresInDays);
+  /**
+   * Snap to the nearest valid range when the view family changes.
+   *
+   * Selecting 6h then opening Listening must not leave 6h highlighted on a
+   * control that no longer offers it. Falling back to the family's first option
+   * keeps the highlighted chip and the data on screen describing the same window.
+   */
+  const allowed = rangesFor(view);
+  const activeRange = allowed.includes(range)
+    ? range
+    : // Nearest by duration, not the first option. Coming back from a 90d data
+      // view would otherwise land on 6h - the largest possible jump - and quietly
+      // redefine what every nav badge is counting.
+      allowed.reduce((best, r) =>
+        Math.abs(RANGE_HOURS[r] - RANGE_HOURS[range]) < Math.abs(RANGE_HOURS[best] - RANGE_HOURS[range]) ? r : best
+      );
+  const ctx: Ctx = {
+    view,
+    go: setView,
+    range: activeRange,
+    hours: RANGE_HOURS[activeRange],
+    demo,
+    can,
+    ownerTokenExpiresInDays
+  };
+  const health = useHealth(RANGE_HOURS[activeRange], demo, ownerTokenExpiresInDays);
   const badges = health.badges;
   const [title, sub] = TITLES[view];
 
@@ -422,20 +473,20 @@ export default function App() {
                   border: LINE.edge
                 }}
               >
-                {(['6h', '24h', '3d', '7d'] as Range[]).map((r) => (
+                {rangesFor(view).map((r) => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => setRange(r)}
-                    aria-pressed={range === r}
+                    aria-pressed={activeRange === r}
                     style={{
                       padding: '6px 11px',
                       borderRadius: 6,
                       border: 'none',
                       cursor: 'pointer',
                       font: `500 11.5px/1.2 ${FONT.mono}`,
-                      background: range === r ? 'rgba(63,179,166,0.16)' : 'transparent',
-                      color: range === r ? C.ok : 'rgba(255,255,255,0.5)'
+                      background: activeRange === r ? 'rgba(63,179,166,0.16)' : 'transparent',
+                      color: activeRange === r ? C.ok : C.t3
                     }}
                   >
                     {r}

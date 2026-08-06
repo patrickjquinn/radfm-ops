@@ -2,6 +2,7 @@ import type { Ctx } from '../App';
 import { C, FONT, LINE, num } from '../theme';
 import { Bar, Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { useActivation, useGrowth, useRevenue } from '../lib/api';
+import { STATE } from '../lib/vocabulary';
 
 /**
  * Is the business growing, and is anyone paying.
@@ -19,7 +20,7 @@ import { useActivation, useGrowth, useRevenue } from '../lib/api';
  * computes it from the play log instead, which is append-only and cannot move.
  */
 export default function Growth({ ctx }: { ctx: Ctx }) {
-  const days = ctx.hours <= 24 ? 30 : 90;
+  const days = Math.round(ctx.hours / 24);
   const growth = useGrowth(days, !ctx.demo);
   const activation = useActivation(Math.min(days, 90), !ctx.demo);
   const revenue = useRevenue(!ctx.demo);
@@ -191,7 +192,7 @@ function DayRows({ rows }: { rows: { day: string; signups: number; premiumStarts
             <span style={{ flex: 1 }} />
             <span style={{ ...num, font: `500 13px/1.2 ${FONT.mono}`, color: C.t1 }}>{r.signups}</span>
             <span style={{ width: 110, textAlign: 'right', font: `400 11px/1.2 ${FONT.mono}`, color: C.t3 }}>
-              {r.premiumStarts == null ? 'no premium data' : `+${r.premiumStarts} / -${r.premiumEnds ?? 0}`}
+              {r.premiumStarts == null ? STATE.notRecorded : `+${r.premiumStarts} / -${r.premiumEnds ?? 0}`}
             </span>
           </div>
           <Bar pct={(r.signups / max) * 100} color={C.okDim} />
