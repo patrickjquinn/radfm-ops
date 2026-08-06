@@ -126,6 +126,25 @@ describe('normalisePath', () => {
     expect(normalisePath('/stations/art/8f21c0de-1234-5678-9abc-def012345678')).toBe('/stations/art/:uuid');
   });
 
+  /**
+   * Found by eye on the live 4xx table: two rows for the same route, differing
+   * only by an encoded query string, each with its own count and share. Exactly
+   * the fragmentation this function exists to prevent, through a door it was not
+   * watching.
+   */
+  it('drops an encoded query string, which was splitting one route into many', () => {
+    expect(normalisePath('/user/3/stations/add%3FstationId=323')).toBe('/user/:id/stations/add');
+    expect(normalisePath('/user/9/stations/remove%3FstationId=349')).toBe('/user/:id/stations/remove');
+    // Both station ids must land on the SAME row - that is the whole point.
+    expect(normalisePath('/user/1/stations/remove%3FstationId=324')).toBe(
+      normalisePath('/user/2/stations/remove%3FstationId=999')
+    );
+  });
+
+  it('drops a plain query string too', () => {
+    expect(normalisePath('/search?q=hello')).toBe('/search');
+  });
+
   it('leaves a static route alone', () => {
     expect(normalisePath('/admin/users/lookup')).toBe('/admin/users/lookup');
     expect(normalisePath('/.env.txt')).toBe('/.env.txt');

@@ -225,6 +225,13 @@ export function exactTotal(result: any): number | null {
 export function normalisePath(p: string): string {
   return (
     p
+      // Drop the query string, encoded or not. Observability records the literal
+      // path, and a client that sends `?stationId=` percent-encoded produces
+      // `/user/3/stations/add%3FstationId=323` - a distinct row per station id.
+      // Two of those were already visible in the live 4xx table as separate
+      // routes, which is precisely the fragmentation this function exists to
+      // prevent, arriving through a door it was not watching.
+      .replace(/(%3[Ff]|\?).*$/, '')
       .replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '/:uuid')
       .replace(/\/p\.[A-Za-z0-9]+/g, '/:id')
       .replace(/\/\d+/g, '/:id')

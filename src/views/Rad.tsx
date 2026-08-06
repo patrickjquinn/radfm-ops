@@ -251,7 +251,14 @@ function UpstreamRows({
                   color: /err|fail|timeout|abort|refus|denied|4\d\d|5\d\d/i.test(outcome) ? C.warnText : C.t2
                 }}
               >
-                {outcome} {n.toLocaleString()}
+                {/*
+                  Historical rows carry a raw, truncated error message as the
+                  outcome - the backend has since bounded it to a short token, but
+                  the old rows keep their value. Untruncated it ran straight into
+                  its own count and read as though "See 5" were part of the error.
+                */}
+                <span title={outcome}>{outcome.length > 28 ? `${outcome.slice(0, 28)}…` : outcome}</span>
+                <span style={{ color: C.t3, marginLeft: 6 }}>{n.toLocaleString()}</span>
               </span>
             ))}
           </span>

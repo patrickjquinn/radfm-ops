@@ -181,7 +181,17 @@ function SourceRows({
 function summarise(rows: any[]) {
   const sets = rows.reduce((a, b) => a + Number(b.n ?? 0), 0);
   const degraded = rows.reduce((a, b) => a + Number(b.degraded ?? 0), 0);
-  const pool = rows.length ? rows.reduce((a, b) => a + Number(b.pool ?? 0), 0) / rows.length : 0;
+  /**
+   * Average the LIVE pool only.
+   *
+   * The fallback source has a pool size of 0 by definition - that is what makes
+   * it the fallback. Averaging it with the live pool produced 47 from a live
+   * pool of 95, and then flagged it amber for being "below the 400 floor". The
+   * conclusion happened to be right and the number was an artefact of averaging
+   * two incomparable things.
+   */
+  const liveRows = rows.filter((r) => Number(r.pool ?? 0) > 0);
+  const pool = liveRows.length ? liveRows.reduce((a, b) => a + Number(b.pool ?? 0), 0) / liveRows.length : 0;
   const ms = rows.length ? rows.reduce((a, b) => a + Number(b.ms ?? 0), 0) / rows.length : 0;
   const degPct = sets ? (degraded / sets) * 100 : 0;
   return [
@@ -195,7 +205,7 @@ function summarise(rows: any[]) {
     {
       label: 'Pool size avg',
       value: String(Math.round(pool)),
-      context: pool < 400 ? 'below the 400 floor' : 'healthy',
+      context: pool < 400 ? 'live sources only · below the 400 floor' : 'live sources only · healthy',
       tone: pool < 400 ? ('warn' as const) : ('plain' as const)
     },
     { label: 'Processing p50', value: `${Math.round(ms)}ms`, context: 'mean of per-source averages', tone: 'plain' as const }

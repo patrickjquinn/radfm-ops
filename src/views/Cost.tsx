@@ -73,11 +73,16 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
               />
 
               {/*
-                The most important statement on this page. A per-image model is
-                priced per image, the gateway prices per token, so it reports zero
-                however many calls were made. Totalling that column and calling it
-                "spend" understates by an unknown amount - and image generation is
-                expensive enough to be the largest line while reading as free.
+                A per-image model is priced per image, the gateway prices per
+                token, so it reports zero however many calls were made. Totalling
+                that column as "spend" understates by an unknown amount.
+                
+                The copy here previously called it "expensive enough to be the
+                largest line". That was my inference from the model name, and it
+                was wrong - the backend measured quality:'low' at $0.011/image,
+                about a quarter of the text spend. Corrected rather than quietly
+                deleted, because a cost claim is exactly where a guess should not
+                have been stated as a magnitude.
               */}
               {/*
                 The image spend the gateway cannot see, now countable.
@@ -158,8 +163,9 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
                     made. That is not free, it is <strong style={{ fontWeight: 500, color: '#fff' }}>not counted</strong>
                     . {unpriced.reduce((a, m) => a + m.requests, 0)} call
                     {unpriced.reduce((a, m) => a + m.requests, 0) === 1 ? '' : 's'} in this window are missing from
-                    every figure on this page, and image generation is expensive enough to be the largest line while
-                    reading as nothing.
+                    every figure on this page and from the gateway's spend limit. The backend measures it separately -
+                    see the artwork panel above - and put it at roughly a quarter of the text spend, not more. It
+                    scales with signups, which is why it is worth counting, not because it is large today.
                   </div>
                 </div>
               )}
