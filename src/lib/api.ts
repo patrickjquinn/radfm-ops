@@ -155,6 +155,8 @@ export type AdminStats = {
   activeUsers24h?: number;
   activeUsers7d?: number;
   newUsers7d?: number;
+  /** Added 6 Aug 2026 alongside the directory route. */
+  admins?: number;
   dataQuality?: { pastPlaysMissingPlayedAt?: number };
 };
 
@@ -474,26 +476,49 @@ export const useAiGateway = (enabled = true) =>
   );
 
 /**
- * The user directory.
+ * The user directory. Shipped 6 Aug 2026; shape verified live, not from the doc.
  *
- * The backend does not serve this yet - `/admin/users` returns 404 while
- * `/admin/users/:id/entitlement` and `/admin/users/lookup` both work. So this
- * resolves to `unavailable` and the view says which route is missing, rather
- * than the page quietly showing one hardcoded user and looking complete.
+ * `revenueCat` is ALWAYS null on list views and never echoes `local`. That is the
+ * backend's decision and it is the right one: a cross-check that mirrors its own
+ * input always agrees, which is worse than having no column at all - it is the
+ * stale-cache failure the panel exists to catch, wearing the panel's own clothes.
+ *
+ * `drift: null` therefore means NOT COMPARED. It does not mean agreement, and the
+ * UI must never render it as one.
+ *
+ * Keyset, not offset: `cursor` is the last id of the page, null when exhausted.
+ * There is no `total` - offset pagination re-scans and drifts under concurrent
+ * writes, so asking for a count would reintroduce exactly what keyset avoids.
  */
 export type UserRow = {
   id: number;
   email?: string;
+  username?: string;
+  createdAt?: string | null;
+  /** premium_users.is_premium. null means no row, which is not the same as false. */
   local?: boolean | null;
+  /** null on list views by design - not checked, NOT "agrees". */
   revenueCat?: boolean | null;
+  /** null means not compared. */
+  drift?: boolean | null;
   lastActive?: string | null;
 };
 
-export const useUserList = (filter: string, enabled = true) =>
-  lift<{ users: UserRow[]; total?: number }>(
+export type UserList = {
+  users: UserRow[];
+  cursor: number | null;
+  filter: string;
+  /** How many rows on this page were actually compared against RevenueCat. */
+  revenueCatChecked: number;
+  pageSize: number;
+  note?: string;
+};
+
+export const useUserList = (filter: string, enabled = true, limit = 50) =>
+  lift<UserList>(
     useQuery({
-      queryKey: ['users', filter],
-      queryFn: () => backendGet(`/admin/users?filter=${encodeURIComponent(filter)}&limit=50`),
+      queryKey: ['users', filter, limit],
+      queryFn: () => backendGet(`/admin/users?filter=${encodeURIComponent(filter)}&limit=${limit}`),
       enabled,
       ...common
     })

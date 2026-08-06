@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { BG, C, FONT, LINE } from '../theme';
 import { Icon } from '../icons';
-import { ActionButton, SectionHead, Source, type Tone, toneColor } from '../components/primitives';
+import { ActionButton, Prose, SectionHead, Source, type Tone, toneColor } from '../components/primitives';
 import { statValue, useAdminStats, useEntitlement, useUserList, useUserLookup } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -30,10 +30,14 @@ export default function Users({ ctx }: { ctx: Ctx }) {
   const ent = useEntitlement(userId, !demo && Boolean(userId));
   const stats = useAdminStats(!demo);
   const list = useUserList(filter, !demo);
+  // Drift is fetched independently of the visible filter, so the card reports the
+  // same number whichever list is on screen. Two counts of one thing disagreeing
+  // is the failure this whole product exists to prevent.
+  const drift = useUserList('drift', !demo);
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
-      <UserStats ctx={ctx} stats={stats} filter={filter} pick={setFilter} />
+      <UserStats ctx={ctx} stats={stats} drift={drift} filter={filter} pick={setFilter} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
       <form
         onSubmit={(e) => {
@@ -457,11 +461,13 @@ function shape(d: any) {
 function UserStats({
   ctx,
   stats,
+  drift,
   filter,
   pick
 }: {
   ctx: Ctx;
   stats: ReturnType<typeof useAdminStats>;
+  drift: ReturnType<typeof useUserList>;
   filter: UserFilter;
   pick: (f: UserFilter) => void;
 }) {
@@ -487,16 +493,30 @@ function UserStats({
     },
     {
       label: 'Entitlement drift',
-      value: 'unavailable',
-      context: 'needs the directory route to compare every row',
-      tone: 'warn',
+      /**
+       * A real count with its scope attached.
+       *
+       * Two things could make this number a lie and both are stated rather than
+       * hidden. It compares only the rows on the page it fetched, so if the
+       * premium set outgrows one page the figure silently narrows - hence
+       * reporting how many were actually checked. And it is ONE-DIRECTIONAL: it
+       * finds accounts we call premium that RevenueCat denies, never a real
+       * subscriber we never marked. That second direction is the one the original
+       * incident ran in, which is exactly why a bare 0 here would be dangerous.
+       */
+      value: drift.state === 'ok' ? String(drift.data.users.length) : drift.state === 'loading' ? '…' : 'unavailable',
+      context:
+        drift.state === 'ok'
+          ? `${drift.data.revenueCatChecked} premium accounts checked${drift.data.cursor != null ? ' (page 1 only)' : ''}`
+          : 'could not compare local against RevenueCat',
+      tone: drift.state !== 'ok' ? 'warn' : drift.data.users.length > 0 ? 'bad' : 'plain',
       f: 'drift'
     },
     {
       label: 'Admins',
-      value: 'unavailable',
-      context: 'admin_users is not exposed to this dashboard',
-      tone: 'warn',
+      value: d?.admins != null ? String(d.admins) : 'unavailable',
+      context: d?.admins != null ? 'admin_users' : 'not returned by /admin/stats',
+      tone: d?.admins != null ? 'plain' : 'warn',
       f: 'admin'
     }
   ];
@@ -593,6 +613,20 @@ function UserList({
         route does not exist. Repeating the generic three-cause text would send
         someone to check three things we have already ruled out.
       */}
+      {list.state === 'ok' && (
+        <div style={{ padding: '11px 0 4px' }}>
+          <Prose max={82}>
+            {list.data.note ??
+              'revenueCat is compared per page only; a null means not compared, not agreement.'}{' '}
+            <strong style={{ fontWeight: 500, color: C.warnText }}>
+              Drift only finds accounts we call premium that RevenueCat denies.
+            </strong>{' '}
+            A real subscriber we never marked will not appear here - and that is the direction the original stale-cache
+            incident ran in. Check a specific account through search above if you suspect it.
+          </Prose>
+        </div>
+      )}
+
       {list.state === 'unavailable' && list.reason === 'not_found' ? (
         <div style={{ padding: '18px 0', display: 'flex', flexDirection: 'column', gap: 9, alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, color: C.warnText }}>
@@ -642,8 +676,8 @@ function UserList({
                   <span style={{ flex: 1, minWidth: 0, font: `400 12.5px/1.4 ${FONT.text}`, color: 'rgba(255,255,255,0.85)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {u.email ?? '-'}
                   </span>
-                  <Flag w={96} value={u.local} />
-                  <Flag w={96} value={u.revenueCat} />
+                  <Flag w={96} value={u.local} yes="premium" no="free" />
+                  <Flag w={96} value={u.revenueCat} yes="active" no="denied" />
                   <span style={{ width: 104, textAlign: 'right', font: `400 12.5px/1.4 ${FONT.mono}`, color: C.t2 }}>
                     {(u.lastActive ?? '-').slice(0, 10)}
                   </span>
@@ -683,8 +717,25 @@ const ListHead = () => (
   </div>
 );
 
-/** null is "not known", which is not the same as false. */
-const Flag = ({ w, value }: { w: number; value: boolean | null | undefined }) => (
+/**
+ * null is NOT COMPARED, which is not the same as false.
+ *
+ * The backend returns revenueCat: null on every list row deliberately, so that a
+ * cross-check can never mirror its own input and agree with itself. Rendering
+ * that null as "free" or "no" would undo the decision and manufacture the exact
+ * false agreement the column exists to detect.
+ */
+const Flag = ({
+  w,
+  value,
+  yes,
+  no
+}: {
+  w: number;
+  value: boolean | null | undefined;
+  yes: string;
+  no: string;
+}) => (
   <span
     style={{
       width: w,
@@ -693,6 +744,6 @@ const Flag = ({ w, value }: { w: number; value: boolean | null | undefined }) =>
       color: value == null ? C.t3 : value ? C.ok : C.t2
     }}
   >
-    {value == null ? 'unknown' : value ? 'premium' : 'free'}
+    {value == null ? 'not checked' : value ? yes : no}
   </span>
 );
