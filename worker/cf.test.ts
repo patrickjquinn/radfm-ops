@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { clampHours, fourxxRows, groupDjReasons, groupNormalised, messageOf, normalisePath } from './cf';
+import {
+  clampHours,
+  exactTotal,
+  fourxxRows,
+  groupDjReasons,
+  groupNormalised,
+  messageOf,
+  normalisePath
+} from './cf';
 
 /**
  * These tests exist because every one of them describes a bug that shipped.
@@ -163,28 +171,72 @@ describe('fourxxRows', () => {
   };
 
   it('merges rows that differ only by an id in the path', () => {
-    const { rows } = fourxxRows(live);
+    const { rows } = fourxxRows(live, 421);
     const apple = rows.filter((r) => r.route.startsWith('/apple'));
     expect(apple).toHaveLength(1);
     expect(apple[0].count).toBe(9);
   });
 
-  it('totals every 4xx, so the share column has an honest denominator', () => {
-    const { total, rows } = fourxxRows(live);
+  it('takes the total from the ungrouped count, never from the visible rows', () => {
+    const { total, rows } = fourxxRows(live, 421);
     expect(total).toBe(421);
     expect(rows[0].share).toBe('88.6%');
   });
 
   it('ranks by count and flags the statuses that signal an outage', () => {
-    const { rows } = fourxxRows(live);
+    const { rows } = fourxxRows(live, 421);
     expect(rows[0].count).toBe(373);
     expect(rows.find((r) => r.status === '429')?.bad).toBe(true);
     expect(rows.find((r) => r.status === '404')?.bad).toBe(false);
   });
 
+  /**
+   * The regression this whole change exists for.
+   *
+   * The grouped telemetry query returns a capped set of groups, so the rows can
+   * describe only part of the window. Dividing by the row sum would make the
+   * breakdown total a tidy 100% and read as complete — the most convincing way to
+   * be wrong. Shares must divide by the real count, and the shortfall must show.
+   */
+  it('divides shares by the true count, not by the rows it can see', () => {
+    const { total, accounted, covered, rows } = fourxxRows(live, 10_000);
+    expect(total).toBe(10_000);
+    expect(accounted).toBe(421);
+    expect(covered).toBe(false);
+    expect(rows[0].share).toBe('3.7%');
+  });
+
+  it('reports covered when the rows do account for every 4xx', () => {
+    expect(fourxxRows(live, 421).covered).toBe(true);
+  });
+
+  it('never reports a total of 0 when the exact count is unavailable', () => {
+    // 0 would render as "no 4xx" — a false healthy reading, which is the exact
+    // failure mode (Cloudflare's own console showing "0 Errors" during an outage)
+    // that this dashboard was built to catch.
+    const { total, covered } = fourxxRows(live, null);
+    expect(total).toBeNull();
+    expect(covered).toBe(false);
+  });
+
   it('returns an empty result rather than throwing when there are no 4xx', () => {
-    expect(fourxxRows(undefined)).toEqual({ total: 0, rows: [] });
-    expect(fourxxRows({ calculations: [] })).toEqual({ total: 0, rows: [] });
+    expect(fourxxRows(undefined, 0).rows).toEqual([]);
+    expect(fourxxRows({ calculations: [] }, 0).rows).toEqual([]);
+  });
+});
+
+describe('exactTotal', () => {
+  it('reads the single aggregate from an ungrouped count query', () => {
+    expect(exactTotal({ calculations: [{ aggregates: [{ value: 655 }] }] })).toBe(655);
+  });
+
+  it('is null, not 0, when the response has no aggregates', () => {
+    expect(exactTotal({ calculations: [{ aggregates: [] }] })).toBeNull();
+    expect(exactTotal(undefined)).toBeNull();
+  });
+
+  it('is null when the value is not a number, rather than coercing to NaN', () => {
+    expect(exactTotal({ calculations: [{ aggregates: [{ value: 'lots' }] }] })).toBeNull();
   });
 });
 

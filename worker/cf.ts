@@ -144,33 +144,73 @@ app.get('/status4xx', async (c) => {
   if (gate) return c.json(gate);
   const hours = clampHours(c.req.query('hours'), 24);
 
-  const out = await obs(c.env, {
-    queryId: 'radfm-ops-4xx',
-    timeframe: { from: Date.now() - hours * 3600_000, to: Date.now() },
-    limit: 100,
-    parameters: {
-      datasets: ['cloudflare-workers'],
-      filters: [
-        { key: '$metadata.service', operation: 'eq', value: c.env.BACKEND_SCRIPT_NAME, type: 'string' },
-        { key: '$workers.event.response.status', operation: 'gte', value: 400, type: 'number' },
-        { key: '$workers.event.response.status', operation: 'lt', value: 500, type: 'number' }
-      ],
-      calculations: [{ operator: 'count', alias: 'count' }],
-      groupBys: [
-        { type: 'string', value: '$workers.event.request.path' },
-        { type: 'number', value: '$workers.event.response.status' }
-      ]
-    },
-    view: 'calculations'
-  });
-  if (out.ok === false) return c.json(out);
+  /**
+   * TWO queries, and the reason is the whole point of this dashboard.
+   *
+   * A grouped telemetry query returns a capped number of groups — measured at TEN,
+   * regardless of the `limit` sent (tried 100 and 1000) and regardless of window
+   * width. Summing those groups therefore does not produce a total; it produces
+   * "the sum of ten groups the API chose". That number is not monotonic in the
+   * window, which is how the bug surfaced: on one instant, 18h reported 54 and 24h
+   * reported 29, reproducibly. A 24h window contains the 18h window, so a real
+   * total cannot shrink.
+   *
+   * So the headline count comes from an UNGROUPED query, which returns one exact
+   * aggregate, and the grouped query is used only for the breakdown rows. The
+   * breakdown being a top-N is fine and expected; the headline silently being a
+   * top-N is the failure this tool exists to catch.
+   */
+  const base = {
+    datasets: ['cloudflare-workers'],
+    filters: [
+      { key: '$metadata.service', operation: 'eq', value: c.env.BACKEND_SCRIPT_NAME, type: 'string' },
+      { key: '$workers.event.response.status', operation: 'gte', value: 400, type: 'number' },
+      { key: '$workers.event.response.status', operation: 'lt', value: 500, type: 'number' }
+    ],
+    calculations: [{ operator: 'count', alias: 'count' }]
+  };
+  const timeframe = { from: Date.now() - hours * 3600_000, to: Date.now() };
+
+  const [totalOut, groupedOut] = await Promise.all([
+    obs(c.env, { queryId: 'radfm-ops-4xx-total', timeframe, limit: 1, parameters: base, view: 'calculations' }),
+    obs(c.env, {
+      queryId: 'radfm-ops-4xx',
+      timeframe,
+      limit: 1000,
+      parameters: {
+        ...base,
+        groupBys: [
+          { type: 'string', value: '$workers.event.request.path' },
+          { type: 'number', value: '$workers.event.response.status' }
+        ]
+      },
+      view: 'calculations'
+    })
+  ]);
+  if (totalOut.ok === false) return c.json(totalOut);
+  if (groupedOut.ok === false) return c.json(groupedOut);
+
   return c.json({
     ok: true,
     hours,
     retentionHours: RETENTION_HOURS,
-    rows: fourxxRows(out.data?.result)
+    rows: fourxxRows(groupedOut.data?.result, exactTotal(totalOut.data?.result))
   });
 });
+
+/**
+ * The one true count, from the ungrouped query.
+ *
+ * Returns null rather than 0 when the shape is not what we expect. A zero here
+ * would render as "no 4xx", which is precisely the false-healthy reading that
+ * this dashboard was built because Cloudflare's own console produced.
+ */
+export function exactTotal(result: any): number | null {
+  const aggregates = result?.calculations?.[0]?.aggregates ?? [];
+  if (!aggregates.length) return null;
+  const n = Number(aggregates[0]?.value ?? aggregates[0]?.count);
+  return Number.isFinite(n) ? n : null;
+}
 
 /**
  * Collapse the raw paths into routes.
@@ -192,7 +232,16 @@ export function normalisePath(p: string): string {
   );
 }
 
-export function fourxxRows(result: any) {
+/**
+ * @param exact the true count from the ungrouped query, or null if it failed.
+ *
+ * Shares are computed against `exact`, NOT against the sum of the rows. Dividing
+ * by the visible rows makes a truncated breakdown add up to a tidy 100%, which
+ * reads as complete and is the most convincing way to be wrong. When the rows do
+ * not account for everything, `covered` says so and the view shows the remainder
+ * rather than letting it vanish.
+ */
+export function fourxxRows(result: any, exact: number | null) {
   const aggregates = result?.calculations?.[0]?.aggregates ?? [];
   const byKey = new Map<string, { route: string; status: string; count: number }>();
 
@@ -209,14 +258,22 @@ export function fourxxRows(result: any) {
   }
 
   const rows = [...byKey.values()].sort((a, b) => b.count - a.count);
-  const total = rows.reduce((a, b) => a + b.count, 0);
+  const shown = rows.slice(0, 15);
+  const accounted = shown.reduce((a, b) => a + b.count, 0);
+  // Fall back to the rows only when the exact count is unavailable, and say so via
+  // `total === null` rather than quietly presenting a floor as a total.
+  const denom = exact ?? accounted;
   return {
-    total,
+    total: exact,
+    groups: aggregates.length,
+    accounted,
+    /** False when the listed routes do not account for every 4xx in the window. */
+    covered: exact == null ? false : accounted >= exact,
     // 401 and 429 lead the eye: those are the shapes an auth outage and a limiter
     // storm take, and both are invisible in the platform's own error metric.
-    rows: rows.slice(0, 15).map((r) => ({
+    rows: shown.map((r) => ({
       ...r,
-      share: total ? `${((r.count / total) * 100).toFixed(1)}%` : '—',
+      share: denom ? `${((r.count / denom) * 100).toFixed(1)}%` : '—',
       bad: r.status === '401' || r.status === '429'
     }))
   };

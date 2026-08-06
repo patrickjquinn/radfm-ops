@@ -189,7 +189,13 @@ export const useTraffic = (hours: number) =>
   );
 
 export type Fourxx = {
-  total: number;
+  /** Exact count from an ungrouped query. `null` means unavailable — never render it as 0. */
+  total: number | null;
+  /** How much of `total` the visible rows actually account for. */
+  accounted: number;
+  /** False when the listed routes do not cover every 4xx in the window. */
+  covered: boolean;
+  groups: number;
   rows: { route: string; status: string; count: number; share: string; bad: boolean }[];
 };
 

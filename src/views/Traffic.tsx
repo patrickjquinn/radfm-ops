@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num } from '../theme';
-import { Bar, Callout, SectionHead, Source, StatGrid } from '../components/primitives';
+import { Bar, Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
 import { useStatus4xx, useTraffic } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -44,7 +44,32 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
                     No 4xx in this window.
                   </div>
                 );
-              return <FourxxRows rows={rows} />;
+              const missing = d.rows.total != null ? d.rows.total - d.rows.accounted : 0;
+              return (
+                <>
+                  <FourxxRows rows={rows} />
+                  {/*
+                    The grouped telemetry query returns a capped set of groups, so these
+                    routes can describe only part of the window. Saying so is the whole
+                    point — a breakdown that quietly adds up to 100% of what it can see
+                    reads as complete, and that is how the 4xx total came to disagree
+                    with itself across time windows.
+                  */}
+                  {!d.rows.covered && missing > 0 && (
+                    <div style={{ paddingTop: 12 }}>
+                      <Prose>
+                        These routes account for {d.rows.accounted.toLocaleString()} of{' '}
+                        {d.rows.total?.toLocaleString()} 4xx in this window —{' '}
+                        <strong style={{ color: C.warnText, fontWeight: 500 }}>
+                          {missing.toLocaleString()} are not shown
+                        </strong>
+                        . Observability caps how many groups a single query returns, so the total above comes from a
+                        separate uncapped count and the rows are the largest it did return.
+                      </Prose>
+                    </div>
+                  )}
+                </>
+              );
             }}
           </Source>
         )}
