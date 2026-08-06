@@ -1,5 +1,5 @@
 import type { Ctx } from '../App';
-import { BG, C, FONT, LINE, dot, num } from '../theme';
+import { BG, C, ELEV, FONT, LINE, MOTION, dot, num } from '../theme';
 import { Icon } from '../icons';
 import { Generated, KeyRow, SectionHead, Source } from '../components/primitives';
 import {
@@ -28,154 +28,189 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
   // number on the badge, the number in the verdict and the rows below always
   // agree. Two counts of the same thing that disagree is the failure this whole
   // tool exists to prevent.
-  const { signals, verdict, domains } = useHealth(ctx.hours, demo, ctx.ownerTokenExpiresInDays);
+  const { signals, verdict, domains, attention } = useHealth(ctx.hours, demo, ctx.ownerTokenExpiresInDays);
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       {/*
-        Verdict first, not a KPI row. A row of big numbers fails "answers a
-        question in ten seconds", because a number without context answers
-        nothing. There is deliberately no "Total Users" hero metric: 631
-        registered users is a vanity number that changes nobody's day.
-      */}
-      <div
-        style={{
-          borderRadius: 8,
-          padding: '18px 20px',
-          border: `1px solid ${
-            verdict.tone === 'bad' ? 'rgba(255,98,89,0.28)' : verdict.tone === 'warn' ? 'rgba(224,160,48,0.28)' : 'rgba(63,179,166,0.24)'
-          }`,
-          background:
-            verdict.tone === 'bad' ? 'rgba(255,98,89,0.06)' : verdict.tone === 'warn' ? 'rgba(224,160,48,0.06)' : 'rgba(63,179,166,0.05)'
-        }}
-      >
-        {/*
-          Scaled up from 17px per the 6 Aug design revision. This is the ten-second
-          answer, and at the old size it competed with the section heads instead of
-          leading the page.
-        */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 18 }}>
-          <span style={dot(verdict.tone === 'bad' ? C.bad : verdict.tone === 'warn' ? C.warn : C.ok, true)} />
-          <div style={{ minWidth: 0, flex: '1 1 300px' }}>
-            <div
-              style={{
-                font: `600 clamp(26px,3vw,34px)/1.08 ${FONT.display}`,
-                letterSpacing: '-0.028em',
-                color: verdict.tone === 'bad' ? C.bad : verdict.tone === 'warn' ? C.warnText : C.ok
-              }}
-            >
-              {verdict.title}
-            </div>
-            <div
-              style={{ font: `400 14px/1.55 ${FONT.text}`, color: C.t2, marginTop: 8, maxWidth: '64ch' }}
-            >
-              {verdict.sub}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
-            {verdict.stats.map((v) => (
-              <div key={v.label}>
-                <div
-                  style={{
-                    ...num,
-                    font: `500 30px/1 ${FONT.mono}`,
-                    letterSpacing: '-0.02em',
-                    color: v.tone === 'bad' ? C.bad : v.tone === 'dim' ? C.t2 : C.t1
-                  }}
-                >
-                  {v.value}
-                </div>
-                <div
-                  style={{
-                    font: `400 10px/1.5 ${FONT.text}`,
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
-                    color: C.t3,
-                    marginTop: 7
-                  }}
-                >
-                  {v.label}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+        The hero, in the tvOS sense: one surface carrying the single most
+        important thing, with everything else deferring to it.
 
-      {/*
-        Two signals minimum. With one, the row below already says everything and
-        the model pads - measured, it produced "according to signal:recs-fallback,
-        which also reports a metric of 12%", which is the input read back. The
-        narrative's whole value is the CONNECTION between signals, and one signal
-        has no connections. With none, there is nothing to narrate at all.
-      */}
-      {/*
-        The three questions this page claims to answer, answered.
-        
-        It used to carry only the engineering verdict, so listeners could fall to
-        zero and subscriptions could drift and the headline still read "Healthy".
-        It was answering "is the code broken", which is narrower than "is it
-        going well" - and the narrower answer was sitting under the wider label.
-        Every figure comes from health.ts, the same derivation the signals and
-        badges use, so these cannot disagree with the panels they link to.
+        The verdict and the three domain numbers used to be two stacked panels of
+        identical treatment - same border, same fill, same weight - so the answer
+        and its supporting detail competed. Apple TV builds hierarchy with layers
+        rather than borders: the thing that matters lifts, the rest recedes. One
+        raised surface, the verdict at the top of it, the domains reading as its
+        evidence rather than as a second panel.
       */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))',
-          gap: 1,
-          background: 'rgba(255,255,255,0.08)',
-          border: LINE.edge,
-          borderRadius: 8,
-          overflow: 'hidden'
+          ...ELEV.raised,
+          borderRadius: 14,
+          overflow: 'hidden',
+          borderColor:
+            verdict.tone === 'bad' ? 'rgba(255,98,89,0.3)' : verdict.tone === 'warn' ? 'rgba(224,160,48,0.3)' : 'rgba(63,179,166,0.22)'
         }}
       >
-        {domains.map((d) => (
-          <button
-            key={d.domain}
-            type="button"
-            onClick={() => ctx.go(d.go)}
-            style={{
-              background: BG.card,
-              padding: '16px 18px 18px',
-              border: 'none',
-              textAlign: 'left',
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 7
-            }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={dot(d.tone === 'bad' ? C.bad : d.tone === 'warn' ? C.warn : d.tone === 'dim' ? C.t3 : C.ok)} />
+        <div
+          style={{
+            padding: 'clamp(22px,3vw,32px)',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'flex-start',
+            gap: 24,
+            // A wash of the verdict colour rather than a filled card. The colour
+            // still carries the state; it just stops shouting it.
+            background:
+              verdict.tone === 'bad'
+                ? 'radial-gradient(120% 140% at 0% 0%, rgba(255,98,89,0.10) 0%, transparent 60%)'
+                : verdict.tone === 'warn'
+                  ? 'radial-gradient(120% 140% at 0% 0%, rgba(224,160,48,0.10) 0%, transparent 60%)'
+                  : 'radial-gradient(120% 140% at 0% 0%, rgba(63,179,166,0.09) 0%, transparent 60%)'
+          }}
+        >
+          <div style={{ minWidth: 0, flex: '1 1 340px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <span style={dot(verdict.tone === 'bad' ? C.bad : verdict.tone === 'warn' ? C.warn : C.ok, true)} />
               <span
                 style={{
                   font: `600 9.5px/1 ${FONT.text}`,
-                  letterSpacing: '0.14em',
+                  letterSpacing: '0.18em',
                   textTransform: 'uppercase',
                   color: C.t3
                 }}
               >
-                {d.domain}
+                {ctx.range} · live
               </span>
-            </span>
-            <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span
-                style={{
-                  ...num,
-                  font: `500 24px/1 ${FONT.mono}`,
-                  letterSpacing: '-0.01em',
-                  color: d.tone === 'bad' ? C.bad : d.tone === 'dim' ? C.t3 : C.t1
-                }}
-              >
-                {d.value}
+            </div>
+            <h2
+              style={{
+                margin: 0,
+                font: `600 clamp(30px,4vw,44px)/1.02 ${FONT.display}`,
+                letterSpacing: '-0.033em',
+                color: verdict.tone === 'bad' ? C.bad : verdict.tone === 'warn' ? C.warnText : C.ok
+              }}
+            >
+              {verdict.title}
+            </h2>
+            <p style={{ font: `400 14.5px/1.55 ${FONT.text}`, color: C.t2, margin: '12px 0 0', maxWidth: '58ch' }}>
+              {verdict.sub}
+            </p>
+          </div>
+        </div>
+
+        {/* The evidence, inside the same surface. */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,230px),1fr))',
+            gap: 1,
+            background: 'rgba(255,255,255,0.07)',
+            borderTop: '1px solid rgba(255,255,255,0.07)'
+          }}
+        >
+          {domains.map((d) => (
+            <button
+              key={d.domain}
+              type="button"
+              onClick={() => ctx.go(d.go)}
+              // tvOS focus: the thing under the cursor lifts toward you. Cheap,
+              // and it turns a wall of equal boxes into something navigable.
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.045)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = BG.card;
+              }}
+              style={{
+                background: BG.card,
+                padding: '18px 20px 20px',
+                border: 'none',
+                textAlign: 'left',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 9,
+                transition: `background ${MOTION}`
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={dot(d.tone === 'bad' ? C.bad : d.tone === 'warn' ? C.warn : d.tone === 'dim' ? C.t3 : C.ok)} />
+                <span
+                  style={{
+                    font: `600 9.5px/1 ${FONT.text}`,
+                    letterSpacing: '0.16em',
+                    textTransform: 'uppercase',
+                    color: C.t3
+                  }}
+                >
+                  {d.domain}
+                </span>
               </span>
-              <span style={{ font: `400 11.5px/1.4 ${FONT.text}`, color: C.t3 }}>{d.label}</span>
-            </span>
-            <span style={{ font: `400 11.5px/1.5 ${FONT.text}`, color: C.t2 }}>{d.detail}</span>
-          </button>
-        ))}
+              <span style={{ display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
+                <span
+                  style={{
+                    ...num,
+                    font: `500 clamp(26px,2.6vw,32px)/1 ${FONT.mono}`,
+                    letterSpacing: '-0.025em',
+                    color: d.tone === 'bad' ? C.bad : d.tone === 'dim' ? C.t3 : C.t1
+                  }}
+                >
+                  {d.value}
+                </span>
+                <span style={{ font: `400 12px/1.4 ${FONT.text}`, color: C.t3 }}>{d.label}</span>
+              </span>
+              <span style={{ font: `400 12px/1.5 ${FONT.text}`, color: C.t2 }}>{d.detail}</span>
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/*
+        What to do when nothing is wrong.
+        
+        The page previously said "Healthy - no signals open" and then offered
+        five static cards and two tables: nothing to act on, nothing changed, no
+        reason to have opened it. These are deliberately NOT signals and carry no
+        severity colour - they are things worth knowing that are working as
+        designed. A page that is only useful during an incident is unfamiliar
+        during one.
+      */}
+      {attention.length > 0 && (
+        <section>
+          <SectionHead title="Worth a look" meta="not faults" />
+          {attention.map((a) => (
+            <button
+              key={a.title}
+              type="button"
+              onClick={() => ctx.go(a.go)}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                width: '100%',
+                textAlign: 'left',
+                padding: '13px 10px 13px 2px',
+                border: 'none',
+                borderBottom: LINE.row,
+                background: 'transparent',
+                cursor: 'pointer',
+                transition: `background ${MOTION}`
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ font: `500 13.5px/1.4 ${FONT.text}`, color: '#fff' }}>{a.title}</div>
+                <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: C.t3, marginTop: 3 }}>{a.detail}</div>
+              </div>
+              <span style={{ color: C.t3, display: 'flex', flex: 'none' }}>
+                <Icon name="chevron.right" size={11} />
+              </span>
+            </button>
+          ))}
+        </section>
+      )}
 
       {!demo && signals.length >= 2 && (
         <Narrative signals={signals} verdict={verdict.title} hours={ctx.hours} />
@@ -243,7 +278,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,300px),1fr))', gap: 20 }}>
         <section>
-          <SectionHead title="Scale" meta="D1 · live" />
+          <SectionHead title="Scale" meta="D1 · current state" />
           {demo ? (
             fx.scaleRows.map((r) => <KeyRow key={r.label} label={r.label} value={r.value} note={r.note} />)
           ) : (
@@ -441,9 +476,12 @@ function ServiceState({
         // rather than leaving a dead cell, which reads as a missing panel.
         gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,228px),1fr))',
         gap: 1,
-        background: 'rgba(255,255,255,0.08)',
-        border: LINE.edge,
-        borderRadius: 8,
+        // The hairline that shows through as the 1px grid gaps, so it must win
+        // over ELEV's fill - hence border and shadow only.
+        background: 'rgba(255,255,255,0.07)',
+        border: ELEV.raised.border,
+        boxShadow: ELEV.raised.boxShadow,
+        borderRadius: 12,
         overflow: 'hidden'
       }}
     >

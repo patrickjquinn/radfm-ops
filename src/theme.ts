@@ -77,3 +77,55 @@ export const num: React.CSSProperties = {
 
 export const sevColor = (sev: 'bad' | 'warn' | 'info' | 'ok') =>
   sev === 'bad' ? C.bad : sev === 'warn' ? C.warn : sev === 'ok' ? C.ok : 'rgba(255,255,255,0.3)';
+
+/**
+ * Depth and motion, borrowed from tvOS.
+ *
+ * Apple TV builds hierarchy with LAYERS rather than borders: a focused element
+ * lifts toward the viewer, everything behind it recedes. This dashboard had one
+ * surface treatment repeated - a 1px border and a flat fill - so a verdict, a
+ * status card and a table row all carried identical visual weight. Everything
+ * looked equally important, which is the same as nothing being important.
+ *
+ * Three levels, and nothing gets a fourth:
+ *   base   the page
+ *   raised panels that sit on it
+ *   focus  the one thing under the cursor
+ */
+export const ELEV = {
+  raised: {
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.012) 100%)',
+    border: '1px solid rgba(255,255,255,0.075)',
+    boxShadow: '0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px -12px rgba(0,0,0,0.7)'
+  },
+  focus: {
+    boxShadow: '0 1px 0 rgba(255,255,255,0.07) inset, 0 16px 40px -14px rgba(0,0,0,0.85)',
+    borderColor: 'rgba(255,255,255,0.14)'
+  }
+} as const;
+
+/**
+ * One duration, one curve.
+ *
+ * 160ms ease-out: fast enough to feel like a response rather than an animation,
+ * slow enough to read as movement. tvOS moderates motion deliberately - things
+ * settle, they do not bounce - and a dashboard is read, not played with.
+ * `prefers-reduced-motion` disables all of it in styles.css.
+ */
+export const MOTION = '160ms cubic-bezier(0.16, 1, 0.3, 1)';
+
+/**
+ * A change, with its direction.
+ *
+ * Every number on the Overview was absolute: 160 4xx, 418 plays, 18
+ * subscriptions. None of them said whether that was better or worse than
+ * yesterday, which is the first thing anyone actually wants to know.
+ *
+ * Returns null when there is no comparable prior period. A delta against a
+ * window that did not exist is the false-zero mistake wearing an arrow.
+ */
+export function delta(now: number | null, before: number | null) {
+  if (now == null || before == null || before === 0) return null;
+  const pct = ((now - before) / before) * 100;
+  return { pct, up: pct > 0, text: `${pct > 0 ? '+' : ''}${pct.toFixed(0)}%` };
+}

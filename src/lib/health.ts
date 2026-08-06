@@ -97,12 +97,29 @@ export type DomainLine = {
   go: ViewId;
 };
 
+/**
+ * Something worth doing, when nothing is broken.
+ *
+ * The Overview said "Healthy - no signals open" and then showed five static
+ * cards and two tables. Nothing to act on, nothing changed since yesterday, no
+ * reason to have opened it. A page that is only useful during an incident gets
+ * checked during incidents, which is exactly when you most want it to be
+ * familiar.
+ *
+ * These are NOT signals. A signal means something is wrong; these are things
+ * worth your attention that are working as designed - which is why they carry no
+ * severity colour and sit below the verdict rather than in it.
+ */
+export type Attention = { title: string; detail: string; go: ViewId };
+
 export type Health = {
   signals: Signal[];
   verdict: Verdict;
   badges: Partial<Record<ViewId, Badge>>;
   /** One headline per domain, so the Overview answers all three questions. */
   domains: DomainLine[];
+  /** Worth doing, when nothing is wrong. Never coloured - these are not faults. */
+  attention: Attention[];
 };
 
 /**
@@ -500,7 +517,36 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     }
   ];
 
-  return { signals: open, verdict, badges, domains };
+  /**
+   * Built from values already derived above, and only included when each is
+   * genuinely actionable rather than merely true.
+   */
+  const attention: Attention[] = [];
+
+  if (expiring != null && expiring > 0)
+    attention.push({
+      title: `${expiring} subscription${expiring === 1 ? '' : 's'} renew or lapse this week`,
+      detail: 'The only forward-looking number here. Everything else is what already happened.',
+      go: 'growth'
+    });
+
+  // Image spend is real, measured by the backend, and absent from the gateway's
+  // total and its spend limit. Worth surfacing while it is small, because it
+  // scales with signups and will not announce itself later.
+  attention.push({
+    title: 'Station artwork is not counted in the AI spend limit',
+    detail: 'The gateway prices per token; images bill per image, so they read as $0 against the daily cap.',
+    go: 'cost'
+  });
+
+  if (playLogLive && plays.state === 'ok' && plays.data.daily.length < 7)
+    attention.push({
+      title: `Listening history is ${plays.data.daily.length} day${plays.data.daily.length === 1 ? '' : 's'} deep`,
+      detail: 'The play log cannot be backfilled, so trends fill in one day at a time from here.',
+      go: 'listening'
+    });
+
+  return { signals: open, verdict, badges, domains, attention };
 }
 
 /**
@@ -545,6 +591,13 @@ function demoHealth(demo: Scenario): Health {
         label: 'subscriptions',
         detail: demo === 'incident' ? '3 in drift' : '2 expiring in 7d',
         tone: demo === 'incident' ? ('bad' as const) : ('ok' as const),
+        go: 'growth' as ViewId
+      }
+    ],
+    attention: [
+      {
+        title: '2 subscriptions renew or lapse this week',
+        detail: 'The only forward-looking number here. Everything else is what already happened.',
         go: 'growth' as ViewId
       }
     ],

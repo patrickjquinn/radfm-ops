@@ -260,7 +260,7 @@ export function Generated({
     <div
       style={{
         border: '1px dashed rgba(255,255,255,0.16)',
-        borderRadius: 8,
+        borderRadius: 12,
         padding: '18px 20px',
         background: 'repeating-linear-gradient(135deg,rgba(255,255,255,0.022) 0 6px,transparent 6px 12px)'
       }}
@@ -304,11 +304,10 @@ export function KeyRow({
   color?: string;
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, padding: '9px 0', borderBottom: LINE.row }}>
-      <span style={{ flex: 1, minWidth: 0, font: `400 13px/1.4 ${FONT.text}`, color: 'rgba(255,255,255,0.72)' }}>
-        {label}
-      </span>
-      <span style={{ ...num, font: `500 13px/1.2 ${FONT.mono}`, color }}>{value}</span>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, padding: '11px 0', borderBottom: LINE.row }}>
+      <span style={{ flex: 1, minWidth: 0, font: `400 13px/1.4 ${FONT.text}`, color: C.t2 }}>{label}</span>
+      {/* The number is the content; the label is chrome. Size says which. */}
+      <span style={{ ...num, font: `500 15px/1.2 ${FONT.mono}`, letterSpacing: '-0.01em', color }}>{value}</span>
       {note !== undefined && (
         <span
           style={{
