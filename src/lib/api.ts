@@ -106,6 +106,8 @@ export type Session = {
   cfTokenPresent: boolean;
   devBackendJwt: boolean;
   ownerTokenForCaller: boolean;
+  /** The proxy is forwarding this caller's Access assertion — the primary identity path. */
+  accessForwarding: boolean;
   ownerTokenExpiresInDays: number | null;
   backendOrigin: string;
   scriptName: string;

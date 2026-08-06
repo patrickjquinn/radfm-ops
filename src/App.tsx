@@ -85,11 +85,21 @@ export default function App() {
   }, []);
 
   const session = useSession();
-  // The Worker's DEV_BACKEND_JWT counts as having a token: gating this purely on a
-  // pasted one means local dev can never resolve a role, and every role-gated
-  // control stays disabled for a reason that is not the real one.
+  /**
+   * Can the Worker reach /admin/* as this caller, by any route?
+   *
+   * Access forwarding leads, because it is now the ONLY route in production — the
+   * hand-minted owner token has been deleted. When this was gated on a bearer
+   * alone, deleting that bearer left every /admin/* panel rendering correctly
+   * while the sidebar read NO ROLE and asked for a credential that is no longer
+   * needed: /admin/me was the one call never made.
+   *
+   * DEV_BACKEND_JWT still counts, so local dev resolves a role rather than
+   * disabling every role-gated control for a reason that is not the real one.
+   */
   const workerHoldsToken =
-    session.state === 'ok' && (session.data.ownerTokenForCaller || session.data.devBackendJwt);
+    session.state === 'ok' &&
+    (session.data.accessForwarding || session.data.ownerTokenForCaller || session.data.devBackendJwt);
   const hasBackendToken = Boolean(jwt) || workerHoldsToken;
   const me = useAdminMe(!demo && hasBackendToken);
 

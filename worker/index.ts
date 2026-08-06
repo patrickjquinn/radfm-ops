@@ -34,6 +34,17 @@ app.get('/api/session', (c) =>
      */
     devBackendJwt: isUnconfigured(c.env) ? undefined : Boolean(c.env.DEV_BACKEND_JWT),
     /**
+     * Whether this request carries an Access assertion the proxy will forward.
+     *
+     * This is now the PRIMARY way identity reaches /admin/* — the hand-minted
+     * bearer is gone. Without reporting it, the client gates /admin/me on a token
+     * that no longer exists, so the role never resolves: every /admin/* panel
+     * renders fine while the sidebar says NO ROLE and asks for a credential the
+     * operator does not need. Reported per request, like the owner-token flag,
+     * because it is a property of the caller rather than of the deployment.
+     */
+    accessForwarding: Boolean(c.get('accessJwt')),
+    /**
      * Whether the Worker will attach an owner token for THIS caller. Reported per
      * request rather than as a global flag, so a second operator added to the
      * Access policy correctly sees "you need your own token" instead of a UI that
