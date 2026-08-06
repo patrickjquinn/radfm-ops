@@ -484,6 +484,48 @@ app.get('/dataset', async (c) => {
 });
 
 /**
+ * What is on air right now.
+ *
+ * Rad.FM is a radio station - "Radio that knows what you like", on air since
+ * 2019 - and this dashboard could not answer the one question you would ask a
+ * broadcast control room: is it transmitting, and what is playing? Every panel
+ * measured whether the CODE was healthy. None measured whether the STATION was.
+ *
+ * The play log answers it. Each row is a track a real listener actually heard,
+ * so the most recent one is the on-air moment, and the gap since it is the
+ * closest thing to dead air this system can observe.
+ *
+ * Silence is not an error anywhere else: nothing throws, no 5xx, no warning. A
+ * station can be completely off air with every engineering panel green.
+ */
+app.get('/ae/onair', async (c) => {
+  const gate = requireToken(c.env);
+  if (gate) return c.json(gate);
+
+  const out = await ae(
+    c.env,
+    `SELECT blob4 AS artist, blob5 AS title, timestamp
+     FROM rad_fm_events WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '6' HOUR
+     ORDER BY timestamp DESC LIMIT 8`
+  );
+  if (out.ok === false) return c.json(out);
+
+  const rows = out.data?.data ?? [];
+  const last = rows[0]?.timestamp ? Date.parse(String(rows[0].timestamp).replace(' ', 'T') + 'Z') : null;
+  return c.json({
+    ok: true,
+    // Minutes since the last track anyone heard. Null when nothing played in the
+    // window at all, which is a stronger statement than a large number.
+    silentFor: last ? Math.round((Date.now() - last) / 60_000) : null,
+    recent: rows.map((r: any) => ({
+      artist: String(r?.artist ?? ''),
+      title: String(r?.title ?? ''),
+      at: String(r?.timestamp ?? '')
+    }))
+  });
+});
+
+/**
  * Activation: when each listener played for the FIRST time.
  *
  * The backend deliberately omitted `firstPlays` from /admin/metrics/growth and

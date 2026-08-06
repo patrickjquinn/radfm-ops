@@ -628,3 +628,12 @@ export const useArtwork = (days: number, enabled = true) =>
   lift<{ days: number; images: number; cost: number }>(
     useQuery({ queryKey: ['artwork', days], queryFn: () => cfGet(`/ae/artwork?days=${days}`), enabled, ...common })
   );
+
+/**
+ * What is on air. `silentFor` is minutes since the last track anyone heard;
+ * null means nothing played in the window at all, which is worse than a number.
+ */
+export const useOnAir = (enabled = true) =>
+  lift<{ silentFor: number | null; recent: { artist: string; title: string; at: string }[] }>(
+    useQuery({ queryKey: ['onair'], queryFn: () => cfGet('/ae/onair'), enabled, ...common, staleTime: 20_000 })
+  );

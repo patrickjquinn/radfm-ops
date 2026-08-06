@@ -9,6 +9,7 @@ import {
   useAeProbe,
   useCron,
   useNarrative,
+  useOnAir,
   useSetlistFill,
   useVersions
 } from '../lib/api';
@@ -23,6 +24,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
   const versions = useVersions();
   const setlists = useSetlistFill(Math.min(ctx.hours, 72), !demo);
   const cron = useCron(!demo);
+  const onAir = useOnAir(!demo);
 
   // Verdict and signals come from the same derivation the nav badges use, so the
   // number on the badge, the number in the verdict and the rows below always
@@ -70,19 +72,16 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
           }}
         >
           <div style={{ minWidth: 0, flex: '1 1 340px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-              <span style={dot(verdict.tone === 'bad' ? C.bad : verdict.tone === 'warn' ? C.warn : C.ok, true)} />
-              <span
-                style={{
-                  font: `600 9.5px/1 ${FONT.text}`,
-                  letterSpacing: '0.18em',
-                  textTransform: 'uppercase',
-                  color: C.t3
-                }}
-              >
-                {ctx.range} · live
-              </span>
-            </div>
+            {/*
+              Rad.FM is a radio station. The site's own eyebrow reads
+              "ON AIR NOW - MORNING MAYHEM", and this dashboard could not answer
+              the one question you would ask a control room: is it transmitting?
+              Every panel measured whether the CODE was healthy; none measured
+              whether the STATION was, and a station can be completely silent
+              with every engineering panel green - nothing throws when nobody is
+              being played to.
+            */}
+            <OnAir state={onAir} demo={Boolean(demo)} />
             <h2
               style={{
                 margin: 0,
@@ -694,5 +693,81 @@ function Narrative({ signals, verdict, hours }: { signals: Signal[]; verdict: st
         panels below for the measured values.
       </div>
     </Generated>
+  );
+}
+
+
+/**
+ * On air, or not, in the product's own vocabulary.
+ *
+ * Each row in the play log is a track a real listener actually heard, so the
+ * most recent one is the on-air moment and the gap since it is the closest thing
+ * to dead air this system can observe. The thresholds are minutes rather than a
+ * percentage because that is how a broadcaster thinks about silence.
+ *
+ * 15 minutes is roughly four tracks. Below that a gap is a quiet moment; beyond
+ * it, something has stopped. Neither is a round number chosen for tidiness - a
+ * typical track is 3-4 minutes, so this is "several tracks should have played by
+ * now and did not".
+ */
+function OnAir({ state, demo }: { state: ReturnType<typeof useOnAir>; demo: boolean }) {
+  const eyebrow = (label: string, colour: string, live: boolean) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+      <span style={dot(colour, live)} />
+      <span
+        style={{
+          font: `600 9.5px/1 ${FONT.text}`,
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+          color: colour
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+
+  if (demo) return eyebrow('On air', C.ok, true);
+  if (state.state !== 'ok') return eyebrow('Air status unavailable', C.warnText, false);
+
+  const { silentFor, recent } = state.data;
+  const now = recent[0];
+
+  // Nothing at all in six hours. A stronger statement than a large gap, and it
+  // deserves its own wording rather than "silent for 360 minutes".
+  if (silentFor == null)
+    return (
+      <>
+        {eyebrow('Off air', C.bad, false)}
+        <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: C.t2, marginBottom: 14 }}>
+          Nothing played in six hours. Nothing throws when nobody is being played to, so no other panel will show this.
+        </div>
+      </>
+    );
+
+  const quiet = silentFor >= 15;
+  return (
+    <>
+      {eyebrow(quiet ? `Silent for ${silentFor}m` : 'On air now', quiet ? C.warnText : C.ok, !quiet)}
+      {now && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: 9,
+            marginBottom: 14,
+            font: `400 13px/1.5 ${FONT.text}`,
+            color: C.t2,
+            flexWrap: 'wrap'
+          }}
+        >
+          <span style={{ color: '#fff', fontWeight: 500 }}>{now.title}</span>
+          <span>{now.artist}</span>
+          <span style={{ font: `400 11.5px/1.5 ${FONT.mono}`, color: C.t3 }}>
+            {silentFor === 0 ? 'just now' : `${silentFor}m ago`}
+          </span>
+        </div>
+      )}
+    </>
   );
 }

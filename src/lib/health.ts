@@ -11,7 +11,8 @@ import {
   useAePlays,
   useRevenue,
   useCost,
-  useUserList
+  useUserList,
+  useOnAir
 } from './api';
 import * as fx from './fixtures';
 import type { Scenario } from './fixtures';
@@ -155,6 +156,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   const revenue = useRevenue(live);
   const cost = useCost(24, live);
   const drift = useUserList('drift', live);
+  const onAir = useOnAir(live);
 
   if (demo) return demoHealth(demo);
 
@@ -170,7 +172,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     { s: traffic, label: 'Request metrics', go: 'traffic' as ViewId },
     { s: plays, label: 'Listening', go: 'listening' as ViewId },
     { s: revenue, label: 'Subscriptions', go: 'growth' as ViewId },
-    { s: cost, label: 'AI spend', go: 'cost' as ViewId }
+    { s: cost, label: 'AI spend', go: 'cost' as ViewId },
+    { s: onAir, label: 'Air status', go: 'listening' as ViewId }
   ];
 
   const unreadable = sources.filter((x) => x.s.state === 'unavailable');
@@ -333,6 +336,33 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       source: 'Observability',
       sev: 'bad',
       go: 'traffic'
+    });
+
+  /**
+   * THE STATION IS SILENT.
+   *
+   * Rad.FM is a radio station. This is the signal that matters most and the one
+   * nothing else can produce: a station can be completely off air with every
+   * engineering panel green, because nothing throws when nobody is being played
+   * to. No 5xx, no warning, no degraded rate - just silence.
+   *
+   * Ranked above everything else for that reason. 15 minutes is roughly four
+   * tracks at a typical 3-4 minute length, so it means "several songs should have
+   * played by now and did not" rather than a round number chosen for tidiness.
+   */
+  const silentFor = onAir.state === 'ok' ? onAir.data.silentFor : null;
+  const nothingAtAll = onAir.state === 'ok' && silentFor == null;
+  if (nothingAtAll || (silentFor != null && silentFor >= 15))
+    signals.unshift({
+      id: 'signal:off-air',
+      title: nothingAtAll ? 'Off air' : `Silent for ${silentFor} minutes`,
+      evidence: nothingAtAll
+        ? 'Nothing played in six hours. Every engineering panel can stay green through this - nothing throws when nobody is being played to.'
+        : 'Roughly four tracks should have played by now. Silence produces no error anywhere else in this dashboard.',
+      metric: nothingAtAll ? 'off air' : `${silentFor}m`,
+      source: 'Play log',
+      sev: 'bad',
+      go: 'listening'
     });
 
   /**
