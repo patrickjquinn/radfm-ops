@@ -6,7 +6,8 @@ import {
   groupDjReasons,
   groupNormalised,
   messageOf,
-  normalisePath
+  normalisePath,
+  spendLimit
 } from './cf';
 
 /**
@@ -252,5 +253,43 @@ describe('clampHours', () => {
     expect(clampHours(undefined)).toBe(24);
     expect(clampHours('-5')).toBe(24);
     expect(clampHours('abc')).toBe(24);
+  });
+});
+
+/**
+ * "No limit" and "could not check whether there is a limit" demand different
+ * actions from the operator, and only one of them is reassuring. Collapsing the
+ * second into the first would invent safety — the exact failure this dashboard
+ * was built in response to, applied to its own controls.
+ */
+describe('spendLimit', () => {
+  it('reads a configured rule', () => {
+    const { limits } = spendLimit({ spend_limits: [{ limit: 5, interval: 'day', enabled: true }] });
+    expect(limits).toEqual([{ budget: 5, window: 'day', enabled: true }]);
+  });
+
+  it('accepts the alternative field spellings, since the shape is undocumented', () => {
+    expect(spendLimit({ spendLimits: [{ budget: 10, window: 'month' }] }).limits?.[0].budget).toBe(10);
+    expect(spendLimit({ budgets: [{ amount: 2, period: 'hour' }] }).limits?.[0].window).toBe('hour');
+  });
+
+  it('treats a rule with no enabled flag as enforced', () => {
+    // A rule that exists is enforced unless it says otherwise. Assuming the
+    // opposite would under-report protection that is actually in place.
+    expect(spendLimit({ spend_limits: [{ limit: 5, interval: 'day' }] }).limits?.[0].enabled).toBe(true);
+    expect(spendLimit({ spend_limits: [{ limit: 5, enabled: false }] }).limits?.[0].enabled).toBe(false);
+  });
+
+  it('reports an empty list when the gateway read fine and carries no rules', () => {
+    // This is a real finding — "no limit set" — and distinct from the case below.
+    expect(spendLimit({ id: 'default' }).limits).toEqual([]);
+  });
+
+  it('reports null, NOT an empty list, when the shape is unrecognised', () => {
+    // Null renders as "cannot verify". Returning [] here would render as
+    // "no limit set", which is a claim we have not earned.
+    expect(spendLimit({ spend_limits: 'nope' }).limits).toBeNull();
+    expect(spendLimit(null).limits).toBeNull();
+    expect(spendLimit('a string').limits).toBeNull();
   });
 });

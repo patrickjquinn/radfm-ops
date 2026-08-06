@@ -458,3 +458,17 @@ export const useCluster = (groups: { msg: string; count: number }[] | null, enab
       staleTime: 5 * 60_000
     })
   );
+
+/**
+ * The AI Gateway spend limit, read live.
+ *
+ * `limits: null` means the gateway record came back in a shape we could not
+ * read — reported as unavailable, never as "no limit set". Inventing reassurance
+ * about a safety control is the worst thing this panel could do.
+ */
+export type SpendLimit = { budget: number; window: string; enabled: boolean };
+
+export const useAiGateway = (enabled = true) =>
+  lift<{ gateway: string; limits: SpendLimit[] | null }>(
+    useQuery({ queryKey: ['ai-gateway'], queryFn: () => cfGet('/ai-gateway'), enabled, ...common })
+  );

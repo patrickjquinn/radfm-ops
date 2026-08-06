@@ -571,4 +571,62 @@ app.get('/versions', async (c) => {
   return c.json({ ok: true, versions: out.data?.result?.items ?? out.data?.result ?? [] });
 });
 
+/**
+ * The AI Gateway spend limit, READ rather than asserted.
+ *
+ * The Config view previously stated "not set" as a literal. A panel that claims
+ * the state of a safety control without reading it is worse than no panel — it
+ * would keep saying whatever it was written to say after someone turned the
+ * control off, which is the false-reassurance failure this whole dashboard was
+ * built in response to. The other rows on that panel read from /api/session, and
+ * this one now reads from here.
+ *
+ * Three outcomes, and they are genuinely different:
+ *   - a rule exists   → show the budget and window
+ *   - none exists     → "no limit set", which is a real finding and shown as one
+ *   - could not read  → "unavailable", NEVER collapsed into "no limit set"
+ *
+ * That last distinction is the entire reason this is a Worker route and not a
+ * constant: "there is no limit" and "I could not check whether there is a limit"
+ * demand different actions from the operator.
+ */
+app.get('/ai-gateway', async (c) => {
+  const gate = requireToken(c.env);
+  if (gate) return c.json(gate);
+
+  const id = c.req.query('id') || 'default';
+  const out = await cfJson(`${API}/accounts/${c.env.CF_ACCOUNT_ID}/ai-gateway/gateways/${id}`, {
+    headers: auth(c.env)
+  });
+  if (out.ok === false) return c.json(out);
+
+  return c.json({ ok: true, gateway: id, ...spendLimit(out.data?.result) });
+});
+
+/**
+ * Pull the spend-limit rules out of a gateway record.
+ *
+ * The field name is not documented and has moved before, so several spellings
+ * are accepted. `limits: null` means "the shape was not what we expected" and is
+ * reported as unavailable — deliberately NOT as "no limit", because guessing
+ * wrong in that direction invents reassurance.
+ */
+export function spendLimit(result: any): { limits: { budget: number; window: string; enabled: boolean }[] | null } {
+  if (!result || typeof result !== 'object') return { limits: null };
+  const raw =
+    result.spend_limits ?? result.spendLimits ?? result.spend_limit_rules ?? result.budgets ?? null;
+  if (raw == null) return { limits: [] }; // the gateway read fine and carries no rules
+  if (!Array.isArray(raw)) return { limits: null };
+
+  return {
+    limits: raw.map((r: any) => ({
+      budget: Number(r?.limit ?? r?.budget ?? r?.amount ?? 0),
+      window: String(r?.interval ?? r?.window ?? r?.period ?? 'unknown'),
+      // Absent `enabled` means present-and-on; a rule that exists is enforced
+      // unless it says otherwise.
+      enabled: r?.enabled !== false
+    }))
+  };
+}
+
 export { app as cf };

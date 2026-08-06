@@ -3,7 +3,7 @@ import type { Ctx } from '../App';
 import { C, FONT, LINE, num } from '../theme';
 import { Icon } from '../icons';
 import { Callout, Prose, SectionHead } from '../components/primitives';
-import { reasonText, useConfig, useSession, useSetConfig, type ConfigEntry } from '../lib/api';
+import { reasonText, useAiGateway, useConfig, useSession, useSetConfig, type ConfigEntry } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
 /**
@@ -297,21 +297,69 @@ function IconButton({
  */
 function Inference() {
   const s = useSession();
+  const gw = useAiGateway();
   const model = s.state === 'ok' ? s.data.aiModel : null;
   const enabled = s.state === 'ok' ? s.data.aiEnabled : null;
+
+  /**
+   * Three outcomes, and conflating any two of them would defeat the panel.
+   *
+   *   ok + a rule      → the budget and window, read from the gateway
+   *   ok + no rules    → "no limit set", a real finding shown as a warning
+   *   unavailable      → "cannot verify", which is NOT the same as "no limit"
+   *
+   * The third is the one that matters. This row used to be the literal string
+   * "not set", which would have kept saying that after a limit was configured —
+   * and, worse, would say the same thing whether or not anyone had checked.
+   */
+  const spend: { value: string; tone: 'ok' | 'plain' | 'warn'; note?: string } =
+    gw.state === 'loading'
+      ? { value: 'reading…', tone: 'plain' }
+      : gw.state === 'unavailable'
+        ? {
+            value: 'cannot verify',
+            tone: 'warn',
+            note:
+              gw.reason === 'bad_token'
+                ? 'the Cloudflare API token is missing the AI Gateway : Read scope, so this cannot be confirmed either way'
+                : reasonText(gw.reason, gw.detail)
+          }
+        : gw.data.limits == null
+          ? { value: 'cannot verify', tone: 'warn', note: 'the gateway returned a shape this client does not recognise' }
+          : gw.data.limits.length === 0
+            ? { value: 'no limit set', tone: 'warn' }
+            : {
+                value: gw.data.limits
+                  .filter((l) => l.enabled)
+                  .map((l) => `$${l.budget} / ${l.window}`)
+                  .join(', ') || 'rules present but disabled',
+                tone: gw.data.limits.some((l) => l.enabled) ? 'ok' : 'warn'
+              };
 
   const rows: { key: string; note: string; value: string; tone: 'ok' | 'plain' | 'warn' }[] = [
     {
       key: 'AI_MODEL',
-      note: 'pinned; Tier 1 because models get deprecated on Cloudflare’s cadence, not ours',
-      value: model ?? '—',
+      note: 'pinned; Tier 1 because models get deprecated on Cloudflare\u2019s cadence, not ours',
+      value: model ?? '\u2014',
       tone: model ? 'plain' : 'warn'
     },
     {
       key: 'AI_BINDING',
       note: 'grants inference, not data access — which is why it does not breach the no-D1-binding rule',
-      value: enabled == null ? '—' : enabled ? 'bound' : 'absent',
+      value: enabled == null ? '\u2014' : enabled ? 'bound' : 'absent',
       tone: enabled ? 'ok' : 'warn'
+    },
+    {
+      key: 'AI_GATEWAY',
+      note: 'all inference routes through the gateway — a limit set on it applies to nothing otherwise',
+      value: gw.state === 'ok' ? gw.data.gateway : 'default',
+      tone: 'plain'
+    },
+    {
+      key: 'AI_GATEWAY_SPEND_LIMIT',
+      note: spend.note ?? 'the backstop against a runaway loop; blocks with 429 rather than billing',
+      value: spend.value,
+      tone: spend.tone
     },
     {
       key: 'AI_REDACTION',
@@ -324,12 +372,6 @@ function Inference() {
       note: 'the summariser has no tools; warning text contains user-generated names',
       value: 'none',
       tone: 'ok'
-    },
-    {
-      key: 'AI_GATEWAY_SPEND_LIMIT',
-      note: 'set this in the Cloudflare dashboard — it is the backstop against a runaway loop',
-      value: 'not set',
-      tone: 'warn'
     }
   ];
 
@@ -339,8 +381,10 @@ function Inference() {
       <div style={{ padding: '11px 0 4px' }}>
         <Prose>
           The model id is a Tier 1 value because models get deprecated on Cloudflare's cadence, not ours. The spend
-          limit exists so an unbounded loop against an inference endpoint fails closed — not because cost is expected.
-          At these volumes the generated panels run inside the free daily allocation.
+          limit exists so an unbounded loop against an inference endpoint fails closed — not because cost is expected;
+          at these volumes the generated panels run inside the free daily allocation. Every row here is read from the
+          running Worker or from the gateway itself, never asserted — a panel that claims a safety control is on
+          without checking would go on saying so after someone turned it off.
         </Prose>
       </div>
       {rows.map((r) => (
