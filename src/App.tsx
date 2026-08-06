@@ -11,12 +11,23 @@ import Traffic from './views/Traffic';
 import Logs from './views/Logs';
 import Rad from './views/Rad';
 import Recs from './views/Recs';
+import Listening from './views/Listening';
 import Users from './views/Users';
 import Stations from './views/Stations';
 import Config from './views/Config';
 import Audit from './views/Audit';
 
-export type ViewId = 'overview' | 'traffic' | 'logs' | 'rad' | 'recs' | 'users' | 'stations' | 'config' | 'audit';
+export type ViewId =
+  | 'overview'
+  | 'traffic'
+  | 'logs'
+  | 'listening'
+  | 'rad'
+  | 'recs'
+  | 'users'
+  | 'stations'
+  | 'config'
+  | 'audit';
 export type Range = '6h' | '24h' | '3d' | '7d';
 
 export const RANGE_HOURS: Record<Range, number> = { '6h': 6, '24h': 24, '3d': 72, '7d': 168 };
@@ -25,6 +36,10 @@ const TITLES: Record<ViewId, [string, string]> = {
   overview: ['Overview', 'The ten-second answer. Signals are ranked by blast radius, not by recency.'],
   traffic: ['Traffic and 4xx', 'Rate, errors and duration. 4xx leads because the platform’s own error metric excludes it.'],
   logs: ['Logs', 'Warnings grouped by normalised message. Errors are the smaller half of the problem.'],
+  listening: [
+    'Listening',
+    'What people actually played. The only source that can answer this - past_plays overwrites on replay.'
+  ],
   rad: ['Rad', 'DJ line quality and the upstream providers behind it.'],
   recs: ['Recommendations', 'Pool health and fallback rate. Degradation here is silent by design.'],
   users: ['Users and entitlement', 'Local state and RevenueCat shown side by side. Disagreement is the bug returning.'],
@@ -41,6 +56,12 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: IconName }
       { id: 'traffic', label: 'Traffic & 4xx', icon: 'waveform' },
       { id: 'logs', label: 'Logs', icon: 'line.horizontal.3' }
     ]
+  },
+  {
+    // Product questions, not engineering ones. Everything above this group is
+    // "is it broken"; this is "is anyone using it, and for what".
+    group: 'Data',
+    items: [{ id: 'listening', label: 'Listening', icon: 'chart.bar' }]
   },
   {
     group: 'Domain',
@@ -475,6 +496,7 @@ export default function App() {
           {view === 'overview' && <Overview ctx={ctx} />}
           {view === 'traffic' && <Traffic ctx={ctx} />}
           {view === 'logs' && <Logs ctx={ctx} />}
+          {view === 'listening' && <Listening ctx={ctx} />}
           {view === 'rad' && <Rad ctx={ctx} />}
           {view === 'recs' && <Recs ctx={ctx} />}
           {view === 'users' && <Users ctx={ctx} />}

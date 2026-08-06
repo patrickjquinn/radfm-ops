@@ -523,3 +523,25 @@ export const useUserList = (filter: string, enabled = true, limit = 50) =>
       ...common
     })
   );
+
+
+/**
+ * Listening history, from the append-only play log in Analytics Engine.
+ *
+ * The only source that can answer a historical listening question - `past_plays`
+ * in D1 overwrites on replay, so it is current state, not a log.
+ *
+ * `firstDay` matters as much as the counts: instrumentation started 5 Aug 2026
+ * and cannot be backfilled, so a window reaching further back is empty because
+ * nobody was measuring, not because nobody was listening. Those are different
+ * claims and the view has to make the distinction.
+ */
+export type PlayTotals = { plays: string; listeners: string; tracks: string };
+export type PlayDay = { day: string; plays: string; listeners: string };
+export type PlayArtist = { artist: string; plays: string; listeners: string };
+export type PlayTrack = { title: string; artist: string; plays: string };
+
+export const useAePlays = (days: number, enabled = true) =>
+  lift<{ days: number; totals: PlayTotals | null; daily: PlayDay[]; artists: PlayArtist[]; tracks: PlayTrack[] }>(
+    useQuery({ queryKey: ['ae-plays', days], queryFn: () => cfGet(`/ae/plays?days=${days}`), enabled, ...common })
+  );

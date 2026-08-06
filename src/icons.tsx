@@ -1,6 +1,8 @@
 import {
   Activity,
+  ChartColumn,
   Catalog,
+  ChartLine,
   Checkmark,
   ChevronRight,
   Close,
@@ -13,6 +15,7 @@ import {
   Save,
   Search,
   SettingsAdjust,
+  Meter,
   UserAvatar,
   WarningAlt
 } from '@carbon/icons-react';
@@ -43,6 +46,9 @@ const MAP = {
   'exclamationmark.triangle': WarningAlt,
   // Not in the original design: the stations browser, the config editor controls.
   playlist: Playlist,
+  'chart.bar': ChartColumn,
+  'chart.line.uptrend': ChartLine,
+  gauge: Meter,
   edit: Edit,
   save: Save,
   close: Close,
