@@ -93,13 +93,31 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
             >
               {verdict.title}
             </h2>
-            <p style={{ font: `400 14.5px/1.55 ${FONT.text}`, color: C.t2, margin: '12px 0 0', maxWidth: '58ch' }}>
-              {verdict.sub}
-            </p>
           </div>
         </div>
-
       </div>
+
+      {/*
+        The verdict's explanation, under the card rather than at the bottom of it.
+
+        The hero is one surface carrying one statement: what is on air, and the
+        verdict. The sentence that qualifies the verdict was sitting inside the
+        same surface as its last element, which made the card carry two jobs and
+        gave the sentence the weight of a headline it is not. Beneath the card it
+        reads as a caption to the thing above - still the first prose on the page,
+        still tied to the verdict, but no longer competing with it for the surface.
+      */}
+      <p
+        style={{
+          font: `400 14.5px/1.55 ${FONT.text}`,
+          color: C.t2,
+          margin: '-2px 0 0',
+          padding: '0 2px',
+          maxWidth: '68ch'
+        }}
+      >
+        {verdict.sub}
+      </p>
 
       {/*
         Three separate cards with real space between them, not cells fused into
