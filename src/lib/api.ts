@@ -545,3 +545,32 @@ export const useAePlays = (days: number, enabled = true) =>
   lift<{ days: number; totals: PlayTotals | null; daily: PlayDay[]; artists: PlayArtist[]; tracks: PlayTrack[] }>(
     useQuery({ queryKey: ['ae-plays', days], queryFn: () => cfGet(`/ae/plays?days=${days}`), enabled, ...common })
   );
+
+
+/**
+ * AI spend, per model, with two independent estimates.
+ *
+ * `reported` is AI Gateway's own figure, documented as best-effort. `computed`
+ * is ours from published per-token rates, priced at the uncached input rate so
+ * it reads as an upper bound. `unpriced` marks a model the gateway cannot price
+ * at all - per-image models report $0 however many calls were made, which is
+ * "not counted", not "free".
+ */
+export type CostRow = {
+  model: string;
+  provider: string;
+  gateway: string;
+  requests: number;
+  tokensIn: number;
+  tokensOut: number;
+  reported: number;
+  computed: number | null;
+  rateSource: string | null;
+  unpriced: boolean;
+  perImage: boolean;
+};
+
+export const useCost = (hours: number, enabled = true) =>
+  lift<{ hours: number; models: CostRow[] }>(
+    useQuery({ queryKey: ['cost', hours], queryFn: () => cfGet(`/cost?hours=${hours}`), enabled, ...common })
+  );

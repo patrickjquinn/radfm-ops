@@ -12,6 +12,7 @@ import Logs from './views/Logs';
 import Rad from './views/Rad';
 import Recs from './views/Recs';
 import Listening from './views/Listening';
+import Cost from './views/Cost';
 import Users from './views/Users';
 import Stations from './views/Stations';
 import Config from './views/Config';
@@ -22,6 +23,7 @@ export type ViewId =
   | 'traffic'
   | 'logs'
   | 'listening'
+  | 'cost'
   | 'rad'
   | 'recs'
   | 'users'
@@ -40,6 +42,7 @@ const TITLES: Record<ViewId, [string, string]> = {
     'Listening',
     'What people actually played. The only source that can answer this - past_plays overwrites on replay.'
   ],
+  cost: ['Cost', 'What this system costs to run. Two independent estimates per model, because one is a number you have to trust.'],
   rad: ['Rad', 'DJ line quality and the upstream providers behind it.'],
   recs: ['Recommendations', 'Pool health and fallback rate. Degradation here is silent by design.'],
   users: ['Users and entitlement', 'Local state and RevenueCat shown side by side. Disagreement is the bug returning.'],
@@ -61,7 +64,10 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: IconName }
     // Product questions, not engineering ones. Everything above this group is
     // "is it broken"; this is "is anyone using it, and for what".
     group: 'Data',
-    items: [{ id: 'listening', label: 'Listening', icon: 'chart.bar' }]
+    items: [
+      { id: 'listening', label: 'Listening', icon: 'chart.bar' },
+      { id: 'cost', label: 'Cost', icon: 'gauge' }
+    ]
   },
   {
     group: 'Domain',
@@ -497,6 +503,7 @@ export default function App() {
           {view === 'traffic' && <Traffic ctx={ctx} />}
           {view === 'logs' && <Logs ctx={ctx} />}
           {view === 'listening' && <Listening ctx={ctx} />}
+          {view === 'cost' && <Cost ctx={ctx} />}
           {view === 'rad' && <Rad ctx={ctx} />}
           {view === 'recs' && <Recs ctx={ctx} />}
           {view === 'users' && <Users ctx={ctx} />}

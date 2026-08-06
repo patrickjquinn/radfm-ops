@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampHours,
+  costRows,
   exactTotal,
   fourxxRows,
   groupDjReasons,
@@ -8,6 +9,7 @@ import {
   groupUpstream,
   messageOf,
   normalisePath,
+  priceModel,
   spendLimit,
   windowLabel
 } from './cf';
@@ -392,5 +394,78 @@ describe('groupUpstream', () => {
       { provider: 'big', outcome: 'success', calls: '500' }
     ]);
     expect(rows[0].provider).toBe('big');
+  });
+});
+
+/**
+ * Costing the AI, and the one row that would silently understate it.
+ *
+ * AI Gateway's `cost` is documented as best-effort. Ours is computed from
+ * published rates, so the two are an independent cross-check on each other -
+ * the same reason the entitlement panel shows local and RevenueCat together.
+ */
+describe('priceModel', () => {
+  it('prices a known model from its published rate', () => {
+    // Groq gpt-oss-120b: $0.15/M in, $0.60/M out, verified 6 Aug 2026.
+    const { computed } = priceModel('openai/gpt-oss-120b', 1_000_000, 1_000_000);
+    expect(computed).toBeCloseTo(0.75, 6);
+  });
+
+  it('prices at the UNCACHED input rate, so the estimate is an upper bound', () => {
+    // Cached input is half price and we cannot see how much was cached. Erring
+    // high is the safe direction for a cost estimate.
+    const { computed } = priceModel('openai/gpt-oss-120b', 1_000_000, 0);
+    expect(computed).toBeCloseTo(0.15, 6);
+    expect(computed).toBeGreaterThan(0.075);
+  });
+
+  it('returns null, not 0, for a model with no rate on file', () => {
+    // 0 would total into the headline as if the model were free.
+    expect(priceModel('some/unknown-model', 5_000_000, 5_000_000).computed).toBeNull();
+  });
+});
+
+describe('costRows', () => {
+  // Recorded live 6 Aug 2026 from aiGatewayRequestsAdaptiveGroups.
+  const live = [
+    {
+      count: 251,
+      dimensions: { gateway: 'rad-fm', model: 'openai/gpt-oss-120b', provider: 'groq' },
+      sum: { cost: 0.09562995, tokensIn: 522789, tokensOut: 43502 }
+    },
+    {
+      count: 4,
+      dimensions: { gateway: 'rad-fm', model: 'gpt-image-1', provider: 'openai' },
+      sum: { cost: 0, tokensIn: 208, tokensOut: 1088 }
+    }
+  ];
+
+  it('agrees with the gateway within caching distance on a priced model', () => {
+    const [top] = costRows(live).filter((r) => r.model === 'openai/gpt-oss-120b');
+    // Ours prices every input token uncached, so it must come in ABOVE the
+    // gateway, and the gap is roughly the cache hit rate rather than an error.
+    expect(top.computed!).toBeGreaterThan(top.reported);
+    expect((top.computed! - top.reported) / top.reported).toBeLessThan(0.25);
+  });
+
+  it('flags a per-image model reporting $0 as UNPRICED, never as free', () => {
+    // The gateway prices per token, so an image model reports 0 however many
+    // calls were made. Totalling that as spend understates by an unknown amount,
+    // and image generation is expensive enough to be the largest real line.
+    const img = costRows(live).find((r) => r.model === 'gpt-image-1')!;
+    expect(img.unpriced).toBe(true);
+    expect(img.perImage).toBe(true);
+    expect(img.computed).toBeNull();
+  });
+
+  it('does not let an unpriced model contribute 0 to a computed total', () => {
+    const total = costRows(live).reduce((a, r) => a + (r.computed ?? 0), 0);
+    const priced = costRows(live).filter((r) => r.computed != null);
+    expect(priced).toHaveLength(1);
+    expect(total).toBeCloseTo(priced[0].computed!, 6);
+  });
+
+  it('ranks by the larger of the two estimates, so a cheap-looking row cannot hide', () => {
+    expect(costRows(live)[0].model).toBe('openai/gpt-oss-120b');
   });
 });

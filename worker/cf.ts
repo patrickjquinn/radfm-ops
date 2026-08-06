@@ -434,6 +434,162 @@ app.get('/ae/probe', async (c) => {
 });
 
 /**
+ * Probe a GraphQL analytics dataset and report what came back.
+ *
+ * GraphQL INTROSPECTION IS DISABLED on Cloudflare's analytics API - `__type` and
+ * `__schema` both return empty, for Viewer and for every account type. So the
+ * dataset names cannot be discovered, only tried. A wrong name returns an error
+ * naming the unknown field, which is more informative than introspection would
+ * have been, but only if it is surfaced rather than swallowed.
+ *
+ * Kept permanently: the next person adding a cost or usage panel needs exactly
+ * this, and the alternative is a redeploy per guess.
+ */
+app.get('/dataset', async (c) => {
+  const gate = requireToken(c.env);
+  if (gate) return c.json(gate);
+  const name = c.req.query('name');
+  const fields = c.req.query('fields') ?? 'count';
+  if (!name) return c.json(fail('bad_request', 'pass ?name=<dataset>&fields=<selection>'));
+
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const res = await cfJson(`${API}/graphql`, {
+    method: 'POST',
+    headers: auth(c.env),
+    body: JSON.stringify({
+      query: `query P($a: String!, $since: Time!) {
+        viewer { accounts(filter: { accountTag: $a }) {
+          rows: ${name}(limit: 20, filter: { datetime_geq: $since }) { ${fields} }
+        } }
+      }`,
+      variables: { a: c.env.CF_ACCOUNT_ID, since }
+    })
+  });
+  if (res.ok === false) return c.json(res);
+
+  const errors = res.data?.errors?.map((e: any) => e.message) ?? [];
+  return c.json({
+    ok: errors.length === 0,
+    dataset: name,
+    errors,
+    rows: res.data?.data?.viewer?.accounts?.[0]?.rows ?? []
+  });
+});
+
+/**
+ * Published per-token rates for the models this system actually calls.
+ *
+ * TRANSCRIBED, not read. Same status as the scoring weights: a rate here can
+ * drift the moment a provider changes their price list, and nothing will tell
+ * us. Every figure derived from this table is labelled as an independent
+ * estimate rather than as billing.
+ *
+ * It exists because AI Gateway's own `cost` is documented as "best-effort
+ * estimation... refer to your provider's dashboard for exact billing amounts".
+ * One estimate is a number you have to trust. Two estimates that agree is
+ * evidence, and two that disagree is a finding - which is the same reason the
+ * entitlement panel shows local and RevenueCat side by side.
+ *
+ * Verified 6 Aug 2026 against each provider's own documentation.
+ */
+export const MODEL_RATES: Record<string, { in: number; out: number; cached?: number; source: string }> = {
+  // console.groq.com/docs/model/openai/gpt-oss-120b
+  'openai/gpt-oss-120b': { in: 0.15, out: 0.6, cached: 0.075, source: 'Groq' },
+  // console.groq.com/docs/model/openai/gpt-oss-20b
+  'openai/gpt-oss-20b': { in: 0.075, out: 0.3, cached: 0.037, source: 'Groq' },
+  // developers.cloudflare.com/workers-ai/platform/pricing
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast': { in: 0.293, out: 2.253, source: 'Workers AI' },
+  '@cf/baai/bge-m3': { in: 0.012, out: 0, source: 'Workers AI' },
+  '@cf/zai-org/glm-4.7-flash': { in: 0.06, out: 0.4, source: 'Workers AI' }
+};
+
+/**
+ * Models billed PER IMAGE, not per token.
+ *
+ * The gateway's cost model is token-based, so for these it reports $0 however
+ * many calls are made. A dashboard that totals that column and calls it "spend"
+ * is understating by an unknown amount - and image generation is expensive
+ * enough that it can be the largest line while reading as free.
+ */
+const PER_IMAGE_MODELS = /image|dall-e|flux|stable-diffusion/i;
+
+export function priceModel(model: string, tokensIn: number, tokensOut: number) {
+  const rate = MODEL_RATES[model];
+  if (!rate) return { computed: null as number | null, rate: null };
+  return {
+    // Deliberately priced at the UNCACHED input rate. Cached tokens are cheaper
+    // and we cannot see how many were cached, so this is an upper bound - which
+    // is the safe direction for a cost estimate to be wrong in.
+    computed: (tokensIn / 1e6) * rate.in + (tokensOut / 1e6) * rate.out,
+    rate
+  };
+}
+
+/**
+ * What this system costs to run, per model, with two independent estimates.
+ */
+app.get('/cost', async (c) => {
+  const gate = requireToken(c.env);
+  if (gate) return c.json(gate);
+  const hours = Math.min(Math.max(Number(c.req.query('hours') ?? 24), 1), 720);
+  const since = new Date(Date.now() - hours * 3600_000).toISOString();
+
+  const out = await cfJson(`${API}/graphql`, {
+    method: 'POST',
+    headers: auth(c.env),
+    body: JSON.stringify({
+      query: `query Cost($a: String!, $since: Time!) {
+        viewer { accounts(filter: { accountTag: $a }) {
+          ai: aiGatewayRequestsAdaptiveGroups(limit: 100, filter: { datetime_geq: $since }) {
+            count
+            dimensions { gateway model provider }
+            sum { tokensIn tokensOut cost }
+          }
+        } }
+      }`,
+      variables: { a: c.env.CF_ACCOUNT_ID, since }
+    })
+  });
+  if (out.ok === false) return c.json(out);
+  const errors = out.data?.errors?.map((e: any) => e.message) ?? [];
+  if (errors.length) return c.json(fail('api_error', errors.join('; ')));
+
+  return c.json({ ok: true, hours, models: costRows(out.data?.data?.viewer?.accounts?.[0]?.ai ?? []) });
+});
+
+export function costRows(rows: any[]) {
+  return rows
+    .map((r: any) => {
+      const model = String(r?.dimensions?.model ?? 'unknown');
+      const tokensIn = Number(r?.sum?.tokensIn ?? 0);
+      const tokensOut = Number(r?.sum?.tokensOut ?? 0);
+      const reported = Number(r?.sum?.cost ?? 0);
+      const { computed, rate } = priceModel(model, tokensIn, tokensOut);
+      const perImage = PER_IMAGE_MODELS.test(model);
+      return {
+        model,
+        provider: String(r?.dimensions?.provider ?? '-'),
+        gateway: String(r?.dimensions?.gateway ?? '-'),
+        requests: Number(r?.count ?? 0),
+        tokensIn,
+        tokensOut,
+        reported,
+        computed,
+        rateSource: rate?.source ?? null,
+        /**
+         * The gateway prices by token, so a per-image model reports 0 no matter
+         * how many calls were made. That is not "free", it is "not counted", and
+         * conflating them is how a cost dashboard understates without ever
+         * looking wrong.
+         */
+        unpriced: perImage && reported === 0,
+        perImage
+      };
+    })
+    .sort((a, b) => Math.max(b.reported, b.computed ?? 0) - Math.max(a.reported, a.computed ?? 0));
+}
+
+/**
  * Listening, from the append-only play log.
  *
  * This is the ONLY source that can answer historical questions about listening.
