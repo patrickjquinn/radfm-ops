@@ -292,28 +292,64 @@ app.get('/logs', async (c) => {
   const hours = clampHours(c.req.query('hours'), 48);
   const level = c.req.query('level') === 'error' ? 'error' : 'warn';
 
-  const out = await obs(c.env, {
-    queryId: `radfm-ops-${level}`,
-    timeframe: { from: Date.now() - hours * 3600_000, to: Date.now() },
-    limit: 1000,
-    parameters: {
-      datasets: ['cloudflare-workers'],
-      filters: [
-        { key: '$metadata.service', operation: 'eq', value: c.env.BACKEND_SCRIPT_NAME, type: 'string' },
-        { key: '$metadata.level', operation: 'eq', value: level, type: 'string' }
-      ]
-    },
-    view: 'events'
-  });
+  const timeframe = { from: Date.now() - hours * 3600_000, to: Date.now() };
+  const filters = [
+    { key: '$metadata.service', operation: 'eq', value: c.env.BACKEND_SCRIPT_NAME, type: 'string' },
+    { key: '$metadata.level', operation: 'eq', value: level, type: 'string' }
+  ];
+
+  /**
+   * Same two-query shape as /status4xx, for the same reason and a different cause.
+   *
+   * We must fetch raw EVENTS here rather than an aggregation, because the telemetry
+   * API groups on the raw message and the whole value of this panel is normalising
+   * first — the setlist failure arrives once per artist name, and collapsing it is
+   * what turned dozens of 1-count rows into a single row reading 519 in 24h.
+   *
+   * But the events view does not return every matching event, and what it returns
+   * is not a superset as the window widens: measured on one instant, 12h yielded
+   * 30 events and 24h yielded 15. So summing the groups gives a sample size, not a
+   * warning count, and it was driving both the nav badge and the >500 threshold.
+   *
+   * The ungrouped count is exact. The groups stay a breakdown of whatever sample
+   * came back, and now say so.
+   */
+  const [totalOut, out] = await Promise.all([
+    obs(c.env, {
+      queryId: `radfm-ops-${level}-total`,
+      timeframe,
+      limit: 1,
+      parameters: { datasets: ['cloudflare-workers'], filters, calculations: [{ operator: 'count', alias: 'count' }] },
+      view: 'calculations'
+    }),
+    obs(c.env, {
+      queryId: `radfm-ops-${level}`,
+      timeframe,
+      limit: 1000,
+      parameters: { datasets: ['cloudflare-workers'], filters },
+      view: 'events'
+    })
+  ]);
   if (out.ok === false) return c.json(out);
 
   const events: any[] = out.data?.result?.events?.events ?? out.data?.result?.events ?? [];
+  const groups = level === 'warn' ? groupNormalised(events) : null;
+  const sampled = groups ? groups.reduce((a, b) => a + b.count, 0) : events.length;
+  // A failed count query must not silently become 0 warnings, so it degrades to
+  // null and the UI reads it as unavailable rather than as quiet.
+  const total = totalOut.ok === false ? null : exactTotal(totalOut.data?.result);
+
   return c.json({
     ok: true,
     hours,
     level,
     retentionHours: RETENTION_HOURS,
-    groups: level === 'warn' ? groupNormalised(events) : null,
+    /** Exact count for the window. Null means unavailable — never render as 0. */
+    total,
+    /** How many events the breakdown below was actually built from. */
+    sampled,
+    covered: total == null ? false : sampled >= total,
+    groups,
     events: level === 'error' ? events.slice(0, 100).map(toErrorRow) : null
   });
 });

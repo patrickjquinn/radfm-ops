@@ -163,7 +163,14 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
 
   // Real findings from sources that DID answer, ranked above the unreadable ones.
   const fourxxTotal = four.state === 'ok' ? four.data.rows.total : null;
-  const warnTotal = warn.state === 'ok' ? (warn.data.groups ?? []).reduce((a, b) => a + b.count, 0) : null;
+  /**
+   * The exact count, NOT the sum of the visible groups.
+   *
+   * The events view returns a sample, and summing it under-reported badly — 12h
+   * showed more warnings than 24h on the same instant. The badge and the >500
+   * threshold both hang off this number, so it has to be the real one.
+   */
+  const warnTotal = warn.state === 'ok' ? warn.data.total : null;
   const djPct = dj.state === 'ok' ? nonOkPct(dj.data.rows) : null;
   const recsPct = recs.state === 'ok' ? degradedPct(recs.data.rows) : null;
   const recsZero = recs.state === 'ok' ? (recs.data.zeroTrackRequests ?? null) : null;
@@ -239,33 +246,30 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       go: 'traffic'
     });
 
+  /**
+   * One list, derived once, consumed by everything below.
+   *
+   * A duplicated signal block once pushed the same signal twice AND did it after
+   * the overview badge had already been computed, so the badge read 2 while the
+   * header read 3 and the list showed the same row twice. Two counts of the same
+   * thing disagreeing on one screen is the precise failure this module exists to
+   * prevent, so the guard is structural: dedupe here, and let nothing below read
+   * the raw array.
+   */
+  const open = dedupeSignals(signals);
+
   const badges: Partial<Record<ViewId, Badge>> = {};
-  if (signals.length)
+  if (open.length)
     badges.overview = {
-      text: String(signals.length),
-      kind: signals.some((s) => s.sev === 'bad') ? 'bad' : 'warn'
+      text: String(open.length),
+      kind: open.some((s) => s.sev === 'bad') ? 'bad' : 'warn'
     };
   if (fourxxTotal) badges.traffic = { text: compact(fourxxTotal), kind: fourxxTotal > 1000 ? 'warn' : 'plain' };
   if (warnTotal) badges.logs = { text: compact(warnTotal), kind: warnTotal > 500 ? 'warn' : 'plain' };
   if (djPct != null && hours >= DJ_MIN_WINDOW_HOURS && djPct >= DJ_NONOK_WARN) badges.rad = { text: `${Math.round(djPct)}%`, kind: 'warn' };
-  // Degraded is the seatbelt; zero tracks is the crash. A request that returns no
-  // tracks at all is a dead player, and those are NOT flagged degraded — three of
-  // them sat underneath a "19 degraded" headline unnoticed. Ranked above the
-  // fallback-rate signal because it is strictly worse.
-  if (recsZero != null && recsZero > 0)
-    signals.unshift({
-      title: `${recsZero} request${recsZero === 1 ? '' : 's'} returned zero tracks`,
-      evidence:
-        'A dead player, not a degraded one. These do not show up as "degraded" — the fallback did not rescue them, it returned nothing. Check poolSource for the cause.',
-      metric: String(recsZero),
-      source: 'Analytics Engine',
-      sev: 'bad',
-      go: 'recs'
-    });
-
   if (recsPct != null && recsPct >= RECS_DEGRADED_WARN) badges.recs = { text: `${Math.round(recsPct)}%`, kind: 'warn' };
 
-  const bad = signals.filter((s) => s.sev === 'bad').length;
+  const bad = open.filter((s) => s.sev === 'bad').length;
   const verdict: Verdict = unreadable.length
     ? {
         // Never "Healthy" on the strength of sources we could not reach. That is a
@@ -280,13 +284,13 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         ]
       }
     : {
-        tone: bad ? 'bad' : signals.length ? 'warn' : 'ok',
+        tone: bad ? 'bad' : open.length ? 'warn' : 'ok',
         title: bad
-          ? `Degraded — ${signals.length} signal${signals.length === 1 ? '' : 's'} open`
-          : signals.length
-            ? `Healthy — ${signals.length} signal${signals.length === 1 ? '' : 's'} open`
+          ? `Degraded — ${open.length} signal${open.length === 1 ? '' : 's'} open`
+          : open.length
+            ? `Healthy — ${open.length} signal${open.length === 1 ? '' : 's'} open`
             : 'Healthy — no signals open',
-        sub: signals.length
+        sub: open.length
           ? 'Every source answered. The signals below are what they said.'
           : 'Every source read cleanly and none of them is reporting a problem.',
         stats: [
@@ -296,7 +300,20 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         ]
       };
 
-  return { signals, verdict, badges };
+  return { signals: open, verdict, badges };
+}
+
+/**
+ * One row per distinct signal, first occurrence wins so ranking is preserved.
+ *
+ * Keyed on title because that is what the operator reads: two rows with the same
+ * title are the same claim made twice, whatever produced them. This exists
+ * because a copy-pasted block did exactly that, and because the cost of the bug
+ * is not the duplicate row — it is that the count beside it stops matching.
+ */
+export function dedupeSignals(signals: Signal[]): Signal[] {
+  const seen = new Set<string>();
+  return signals.filter((s) => (seen.has(s.title) ? false : (seen.add(s.title), true)));
 }
 
 function demoHealth(demo: Scenario): Health {

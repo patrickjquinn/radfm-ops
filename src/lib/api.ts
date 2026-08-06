@@ -207,7 +207,16 @@ export const useStatus4xx = (hours: number) =>
 export type LogGroup = { msg: string; count: number; first: number; last: number };
 
 export const useLogs = (level: 'warn' | 'error', hours: number) =>
-  lift<{ groups: LogGroup[] | null; events: any[] | null; retentionHours: number }>(
+  lift<{
+    groups: LogGroup[] | null;
+    events: any[] | null;
+    retentionHours: number;
+    /** Exact count for the window. `null` means unavailable — never render as 0. */
+    total: number | null;
+    /** How many events the breakdown was built from; the events view returns a sample. */
+    sampled: number;
+    covered: boolean;
+  }>(
     useQuery({
       queryKey: ['logs', level, hours],
       queryFn: () => cfGet(`/logs?level=${level}&hours=${hours}`),

@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num } from '../theme';
-import { Callout, SectionHead, Source } from '../components/primitives';
+import { Callout, Prose, SectionHead, Source } from '../components/primitives';
 import { useLogs, type LogGroup } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -36,7 +36,28 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
           <Source data={warn} what="Warnings">
             {(d) =>
               d.groups && d.groups.length ? (
-                <WarnRows rows={d.groups.map(toWarnRow)} />
+                <>
+                  <WarnRows rows={d.groups.map(toWarnRow)} />
+                  {/*
+                    The counts below come from a sample, because normalising the message
+                    requires the raw events and the events view does not return them all.
+                    The headline count is exact and separate. Saying which is which is the
+                    difference between a ranked breakdown and a wrong number — summing the
+                    sample once put 12h above 24h on the same screen.
+                  */}
+                  {!d.covered && d.total != null && (
+                    <div style={{ paddingTop: 12 }}>
+                      <Prose>
+                        <strong style={{ color: C.warnText, fontWeight: 500 }}>
+                          {d.total.toLocaleString()} warnings in this window
+                        </strong>
+                        ; the grouping above is built from a {d.sampled.toLocaleString()}-event sample, so treat the
+                        ranking as the signal and not the counts. Observability does not return every matching event to
+                        a single query.
+                      </Prose>
+                    </div>
+                  )}
+                </>
               ) : (
                 <Empty text="No warnings in this window." />
               )

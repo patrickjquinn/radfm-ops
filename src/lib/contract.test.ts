@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { reasonText, statValue } from './api';
+import { dedupeSignals, type Signal } from './health';
 
 /**
  * The contract between this client and the Rad.FM backend.
@@ -134,5 +135,42 @@ describe('reasonText', () => {
 
   it('names the wrangler OAuth token trap by its error code', () => {
     expect(reasonText('bad_token')).toMatch(/10000/);
+  });
+});
+
+/**
+ * The invariant health.ts exists for: one count of one thing.
+ *
+ * A duplicated signal block once pushed the same signal twice and did it after
+ * the overview badge had been computed, so the badge read 2, the header read 3,
+ * and the list showed the same row twice — on the same screen, at the same time.
+ * That is the exact failure this module was centralised to prevent.
+ */
+describe('dedupeSignals', () => {
+  const sig = (title: string, sev: Signal['sev'] = 'bad'): Signal => ({
+    title,
+    evidence: '',
+    metric: '1',
+    source: 'test',
+    sev,
+    go: 'overview'
+  });
+
+  it('collapses a signal pushed twice, so the count matches the rows', () => {
+    const out = dedupeSignals([sig('zero tracks'), sig('Elevated 4xx'), sig('zero tracks')]);
+    expect(out).toHaveLength(2);
+    expect(out.map((s) => s.title)).toEqual(['zero tracks', 'Elevated 4xx']);
+  });
+
+  it('keeps the first occurrence, so blast-radius ranking survives', () => {
+    const first = sig('dup', 'bad');
+    const out = dedupeSignals([first, sig('other', 'warn'), sig('dup', 'warn')]);
+    expect(out[0]).toBe(first);
+    expect(out[0].sev).toBe('bad');
+  });
+
+  it('leaves a list with no duplicates untouched', () => {
+    const list = [sig('a'), sig('b'), sig('c')];
+    expect(dedupeSignals(list)).toEqual(list);
   });
 });
