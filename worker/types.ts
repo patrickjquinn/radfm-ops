@@ -14,6 +14,8 @@ export type Bindings = {
    * team domain, which is correct for any account that has never been renamed.
    */
   ACCESS_ISSUER?: string;
+  /** Comma-separated list of acceptable issuers. Supersedes ACCESS_ISSUER. */
+  ACCESS_ISSUERS?: string;
   /** Local dev only: a Rad.FM user JWT so /admin/* can be exercised without Access. */
   DEV_BACKEND_JWT?: string;
   /**

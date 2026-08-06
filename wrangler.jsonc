@@ -69,7 +69,13 @@
     // tokens with that issuer even though the team is now `radfm` - verified by
     // renaming, logging out, logging back in, and reading the claim. The JWKS is
     // fetched from ACCESS_TEAM_DOMAIN; the issuer is checked against this.
-    "ACCESS_ISSUER": "https://long-wildflower-f4fb.cloudflareaccess.com"
+    // A LIST. Access pins an application's issuer at creation and does not follow a
+    // team rename, so this diverged from ACCESS_TEAM_DOMAIN. But Cloudflare can also
+    // align them again at any point, and pinning one value rejects every fresh token
+    // when that happens - which is what took the dashboard down after a routine
+    // re-login. The current team domain is always accepted in code, so this only ever
+    // needs to list the OLD ones.
+    "ACCESS_ISSUERS": "https://long-wildflower-f4fb.cloudflareaccess.com"
   }
 
   // NO d1_databases binding. This is deliberate and load-bearing.

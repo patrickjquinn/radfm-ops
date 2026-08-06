@@ -585,6 +585,36 @@ function UserList({
   return (
     <section>
       <SectionHead title={title} meta="admin/users · D1 + RevenueCat" />
+      {/*
+        A 404 on /admin/* is usually ambiguous - limiter, role, or migration - and
+        reasonText says all three because the API refuses to say which. Here we
+        know: every other /admin/* route answers for this same caller at this same
+        moment, so it is not the limiter, not the role, and not the migration. The
+        route does not exist. Repeating the generic three-cause text would send
+        someone to check three things we have already ruled out.
+      */}
+      {list.state === 'unavailable' && list.reason === 'not_found' ? (
+        <div style={{ padding: '18px 0', display: 'flex', flexDirection: 'column', gap: 9, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, color: C.warnText }}>
+            <Icon name="exclamationmark.triangle" size={13} />
+            <span style={{ font: `600 10px/1 ${FONT.text}`, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+              Directory route not built
+            </span>
+          </div>
+          <div style={{ font: `400 12.5px/1.6 ${FONT.text}`, color: C.t2, maxWidth: '78ch' }}>
+            The backend does not serve{' '}
+            <code style={{ font: `400 12px/1 ${FONT.mono}`, color: C.warnText }}>GET /admin/users</code>. This is not the
+            usual ambiguous 404 - every other <code style={{ font: `400 12px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>/admin/*</code>{' '}
+            route answers for this caller right now, so the limiter, your role and migration 0003 are all ruled out.
+            <br />
+            <br />
+            What does work: search above resolves a user by id, email or RevenueCat id, and selecting one shows their
+            full entitlement. The counts above come from{' '}
+            <code style={{ font: `400 12px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>/admin/stats</code>. Drift
+            and admin counts need this route because both require comparing every row.
+          </div>
+        </div>
+      ) : (
       <Source data={list} what="User directory">
         {(d) =>
           d.users?.length ? (
@@ -627,6 +657,7 @@ function UserList({
           )
         }
       </Source>
+      )}
     </section>
   );
 }

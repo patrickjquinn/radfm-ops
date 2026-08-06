@@ -84,11 +84,32 @@ export function readAccessToken(headerValue: string | undefined, cookie: string 
  *
  * So the JWKS domain and the issuer are two different values that merely happen
  * to match on an account that has never been renamed - which is why every example
- * (Cloudflare's included) conflates them. ACCESS_ISSUER exists to hold them apart.
- * Defaulting to the team domain keeps the common case zero-config.
+ * (Cloudflare's included) conflates them.
+ *
+ * A LIST, not a single value, and the current team domain is always included.
+ * Pinning one issuer is brittle in both directions: it breaks if the team is
+ * renamed again, and it breaks if Cloudflare aligns the pinned value with the
+ * team domain. The second is not hypothetical - it is what took this Worker down
+ * after a routine re-login, and the symptom was the worst kind: Access let the
+ * request through, our own check rejected it, and every panel reported its own
+ * source as unreadable. The dashboard blamed nine innocent sources for one bad
+ * comparison in its auth layer.
+ *
+ * The backend team reached this conclusion first and shipped ACCESS_ISSUERS as a
+ * list for exactly this reason. This is that fix, arriving late.
  */
-export function expectedIssuer(env: { ACCESS_ISSUER?: string; ACCESS_TEAM_DOMAIN: string }): string {
-  return env.ACCESS_ISSUER?.trim() || `https://${env.ACCESS_TEAM_DOMAIN}`;
+export function expectedIssuer(env: { ACCESS_ISSUER?: string; ACCESS_ISSUERS?: string; ACCESS_TEAM_DOMAIN: string }): string[] {
+  const listed = (env.ACCESS_ISSUERS ?? env.ACCESS_ISSUER ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+  // The current team domain is ALWAYS acceptable. Cloudflare may align the issuer
+  // with the team domain at any point, and when it does a single pinned issuer
+  // rejects every fresh token - which presents as "logged in but everything is
+  // unavailable", with the dashboard blaming its own sources.
+  const current = `https://${env.ACCESS_TEAM_DOMAIN}`;
+  return [...new Set([...listed, current])];
 }
 
 /**
@@ -104,7 +125,7 @@ export function expectedIssuer(env: { ACCESS_ISSUER?: string; ACCESS_TEAM_DOMAIN
  * write a log line. Nothing is authorised on the strength of it - the request has
  * already been rejected by the time this runs.
  */
-export function staleIssuerHint(token: string, expected: string): string {
+export function staleIssuerHint(token: string, expected: string[]): string {
   try {
     const payload = token.split('.')[1];
     if (!payload) return '';
@@ -114,8 +135,8 @@ export function staleIssuerHint(token: string, expected: string): string {
       )
     );
     const iss = String(json?.iss ?? '');
-    if (iss && iss !== expected) {
-      return ` - token was issued by ${iss}, this Worker expects ${expected}. Access pins an application's issuer at creation and does NOT change it when the team is renamed, so this does not resolve by logging out. Set ACCESS_ISSUER to ${iss}.`;
+    if (iss && !expected.includes(iss)) {
+      return ` - token was issued by ${iss}, this Worker accepts ${expected.join(', ')}. Add ${iss} to ACCESS_ISSUERS (comma separated).`;
     }
   } catch {
     /* a malformed token is already covered by the error above */

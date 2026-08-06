@@ -136,48 +136,69 @@ describe('staleIssuerHint', () => {
     return `header.${payload}.sig`;
   };
 
-  // The exact failure that took the dashboard down after the team rename: a valid
-  // signature and the right aud, rejected on iss alone, presenting as an outage.
-  it('names both issuers and points at ACCESS_ISSUER, not at logging out', () => {
-    const hint = staleIssuerHint(
-      tokenWithIss('https://long-wildflower-f4fb.cloudflareaccess.com'),
+  it('names the issuer that arrived and the ones we accept', () => {
+    const hint = staleIssuerHint(tokenWithIss('https://brand-new.cloudflareaccess.com'), [
+      'https://long-wildflower-f4fb.cloudflareaccess.com',
       'https://radfm.cloudflareaccess.com'
-    );
-    expect(hint).toContain('long-wildflower-f4fb');
+    ]);
+    expect(hint).toContain('brand-new');
     expect(hint).toContain('radfm.cloudflareaccess.com');
-    expect(hint).toMatch(/ACCESS_ISSUER/);
-    // Logging out does NOT fix this - the issuer belongs to the application.
-    expect(hint).toMatch(/does not resolve by logging out/i);
+    expect(hint).toMatch(/ACCESS_ISSUERS/);
   });
 
-  it('says nothing when the issuer is the one we expect', () => {
-    expect(
-      staleIssuerHint(tokenWithIss('https://radfm.cloudflareaccess.com'), 'https://radfm.cloudflareaccess.com')
-    ).toBe('');
+  it('says nothing when the issuer is one we accept', () => {
+    const accepted = ['https://long-wildflower-f4fb.cloudflareaccess.com', 'https://radfm.cloudflareaccess.com'];
+    expect(staleIssuerHint(tokenWithIss(accepted[0]), accepted)).toBe('');
+    // The second is the case that broke production: a token issued by the CURRENT
+    // team domain, rejected because only the old pinned issuer was accepted.
+    expect(staleIssuerHint(tokenWithIss(accepted[1]), accepted)).toBe('');
   });
 
   it('says nothing rather than throwing on a malformed token', () => {
-    expect(staleIssuerHint('not-a-jwt', 'https://radfm.cloudflareaccess.com')).toBe('');
-    expect(staleIssuerHint('a.!!!.c', 'https://radfm.cloudflareaccess.com')).toBe('');
+    expect(staleIssuerHint('not-a-jwt', ['https://radfm.cloudflareaccess.com'])).toBe('');
+    expect(staleIssuerHint('a.!!!.c', ['https://radfm.cloudflareaccess.com'])).toBe('');
   });
 });
 
+/**
+ * A single pinned issuer is brittle in BOTH directions. It breaks if the team is
+ * renamed again, and it breaks if Cloudflare aligns the pinned value with the
+ * team domain. The second is what actually happened: a routine re-login produced
+ * a token from the current team domain, the Worker accepted only the old pinned
+ * one, and every panel reported its own source as unreadable. One bad comparison
+ * in the auth layer, nine innocent sources blamed.
+ */
 describe('expectedIssuer', () => {
-  it('uses ACCESS_ISSUER when the app issuer has diverged from the team domain', () => {
-    expect(
-      expectedIssuer({
-        ACCESS_ISSUER: 'https://long-wildflower-f4fb.cloudflareaccess.com',
-        ACCESS_TEAM_DOMAIN: 'radfm.cloudflareaccess.com'
-      })
-    ).toBe('https://long-wildflower-f4fb.cloudflareaccess.com');
+  it('always accepts the current team domain, whatever is pinned', () => {
+    const out = expectedIssuer({
+      ACCESS_ISSUER: 'https://long-wildflower-f4fb.cloudflareaccess.com',
+      ACCESS_TEAM_DOMAIN: 'radfm.cloudflareaccess.com'
+    });
+    expect(out).toContain('https://long-wildflower-f4fb.cloudflareaccess.com');
+    expect(out).toContain('https://radfm.cloudflareaccess.com');
   });
 
-  it('defaults to the team domain, so an unrenamed account needs no config', () => {
-    expect(expectedIssuer({ ACCESS_TEAM_DOMAIN: 'radfm.cloudflareaccess.com' })).toBe(
+  it('accepts a comma-separated list', () => {
+    const out = expectedIssuer({
+      ACCESS_ISSUERS: 'https://a.cloudflareaccess.com, https://b.cloudflareaccess.com',
+      ACCESS_TEAM_DOMAIN: 'c.cloudflareaccess.com'
+    });
+    expect(out).toEqual([
+      'https://a.cloudflareaccess.com',
+      'https://b.cloudflareaccess.com',
+      'https://c.cloudflareaccess.com'
+    ]);
+  });
+
+  it('falls back to the team domain alone when nothing is pinned', () => {
+    expect(expectedIssuer({ ACCESS_TEAM_DOMAIN: 'radfm.cloudflareaccess.com' })).toEqual([
       'https://radfm.cloudflareaccess.com'
-    );
-    expect(expectedIssuer({ ACCESS_ISSUER: '  ', ACCESS_TEAM_DOMAIN: 'radfm.cloudflareaccess.com' })).toBe(
-      'https://radfm.cloudflareaccess.com'
-    );
+    ]);
+  });
+
+  it('does not repeat the team domain when it is also pinned', () => {
+    expect(
+      expectedIssuer({ ACCESS_ISSUER: 'https://radfm.cloudflareaccess.com', ACCESS_TEAM_DOMAIN: 'radfm.cloudflareaccess.com' })
+    ).toEqual(['https://radfm.cloudflareaccess.com']);
   });
 });
