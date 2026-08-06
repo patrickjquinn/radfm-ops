@@ -99,7 +99,7 @@ function Head() {
         font: `600 9.5px/1 ${FONT.text}`,
         letterSpacing: '0.12em',
         textTransform: 'uppercase',
-        color: 'rgba(255,255,255,0.38)'
+        color: 'rgba(255,255,255,0.5)'
       }}
     >
       {cols.map((c) => (

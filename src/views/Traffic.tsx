@@ -133,7 +133,7 @@ function FourxxRows({
                 width: 52,
                 textAlign: 'right',
                 font: `400 11.5px/1.2 ${FONT.mono}`,
-                color: 'rgba(255,255,255,0.38)'
+                color: 'rgba(255,255,255,0.5)'
               }}
             >
               {r.share}
@@ -172,7 +172,7 @@ function Volume({ bars, start }: { bars: { ok: number; err: number; hot?: boolea
           display: 'flex',
           justifyContent: 'space-between',
           font: `400 10.5px/1 ${FONT.mono}`,
-          color: 'rgba(255,255,255,0.32)',
+          color: C.t3,
           paddingTop: 6,
           borderTop: LINE.row
         }}

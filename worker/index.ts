@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { accessAuth } from './access';
 import { cf } from './cf';
 import { backend, probe } from './backend';
+import { ai } from './ai';
 import { type Ctx, isUnconfigured } from './types';
 
 const app = new Hono<Ctx>();
@@ -16,6 +17,7 @@ app.use('/api/*', accessAuth);
 app.route('/api/cf', cf); // named Cloudflare API queries; holds the token
 app.route('/api/backend', backend); // proxies api.rad-fm.com/admin/*
 app.route('/api/probe', probe); // diagnostics; deliberately weaker than the proxy, never stronger
+app.route('/api/ai', ai); // inference; narrates and groups, never counts
 
 /** What the client needs to render its chrome honestly, and nothing more. */
 app.get('/api/session', (c) =>
@@ -64,6 +66,15 @@ app.get('/api/session', (c) =>
      * for no stated reason, which is the failure mode this tool exists to avoid.
      */
     ownerTokenExpiresInDays: expiresInDays(c.env.OPS_BACKEND_JWT),
+    /**
+     * Inference configuration, reported rather than asserted.
+     *
+     * The Config view reads these instead of hard-coding "redaction: enabled".
+     * A panel that claims a safety control is on without reading it would survive
+     * someone turning it off, which makes it worse than no panel at all.
+     */
+    aiEnabled: Boolean(c.env.AI),
+    aiModel: c.env.AI_MODEL ?? null,
     backendOrigin: c.env.BACKEND_ORIGIN,
     scriptName: c.env.BACKEND_SCRIPT_NAME,
     /** Observability retains 3 days; the UI surfaces this rather than truncating silently. */

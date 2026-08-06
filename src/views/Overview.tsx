@@ -1,9 +1,18 @@
 import type { Ctx } from '../App';
 import { BG, C, FONT, LINE, dot, num } from '../theme';
 import { Icon } from '../icons';
-import { KeyRow, SectionHead, Source } from '../components/primitives';
-import { statValue, useAdminStats, useAeProbe, useCron, useSetlistFill, useVersions } from '../lib/api';
-import { useHealth } from '../lib/health';
+import { Generated, KeyRow, SectionHead, Source } from '../components/primitives';
+import {
+  reasonText,
+  statValue,
+  useAdminStats,
+  useAeProbe,
+  useCron,
+  useNarrative,
+  useSetlistFill,
+  useVersions
+} from '../lib/api';
+import { useHealth, type Signal } from '../lib/health';
 import * as fx from '../lib/fixtures';
 
 export default function Overview({ ctx }: { ctx: Ctx }) {
@@ -39,29 +48,37 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
             verdict.tone === 'bad' ? 'rgba(255,98,89,0.06)' : verdict.tone === 'warn' ? 'rgba(224,160,48,0.06)' : 'rgba(63,179,166,0.05)'
         }}
       >
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14 }}>
+        {/*
+          Scaled up from 17px per the 6 Aug design revision. This is the ten-second
+          answer, and at the old size it competed with the section heads instead of
+          leading the page.
+        */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 18 }}>
           <span style={dot(verdict.tone === 'bad' ? C.bad : verdict.tone === 'warn' ? C.warn : C.ok, true)} />
-          <div style={{ minWidth: 0, flex: '1 1 260px' }}>
+          <div style={{ minWidth: 0, flex: '1 1 300px' }}>
             <div
               style={{
-                font: `600 17px/1.25 ${FONT.display}`,
-                letterSpacing: '-0.018em',
+                font: `600 clamp(26px,3vw,34px)/1.08 ${FONT.display}`,
+                letterSpacing: '-0.028em',
                 color: verdict.tone === 'bad' ? C.bad : verdict.tone === 'warn' ? C.warnText : C.ok
               }}
             >
               {verdict.title}
             </div>
-            <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.62)', marginTop: 4 }}>
+            <div
+              style={{ font: `400 14px/1.55 ${FONT.text}`, color: C.t2, marginTop: 8, maxWidth: '64ch' }}
+            >
               {verdict.sub}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
             {verdict.stats.map((v) => (
               <div key={v.label}>
                 <div
                   style={{
                     ...num,
-                    font: `500 19px/1.1 ${FONT.mono}`,
+                    font: `500 30px/1 ${FONT.mono}`,
+                    letterSpacing: '-0.02em',
                     color: v.tone === 'bad' ? C.bad : v.tone === 'dim' ? C.t2 : C.t1
                   }}
                 >
@@ -70,10 +87,10 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
                 <div
                   style={{
                     font: `400 10px/1.5 ${FONT.text}`,
-                    letterSpacing: '0.08em',
+                    letterSpacing: '0.1em',
                     textTransform: 'uppercase',
-                    color: 'rgba(255,255,255,0.38)',
-                    marginTop: 4
+                    color: C.t3,
+                    marginTop: 7
                   }}
                 >
                   {v.label}
@@ -83,6 +100,17 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
           </div>
         </div>
       </div>
+
+      {/*
+        Two signals minimum. With one, the row below already says everything and
+        the model pads — measured, it produced "according to signal:recs-fallback,
+        which also reports a metric of 12%", which is the input read back. The
+        narrative's whole value is the CONNECTION between signals, and one signal
+        has no connections. With none, there is nothing to narrate at all.
+      */}
+      {!demo && signals.length >= 2 && (
+        <Narrative signals={signals} verdict={verdict.title} hours={ctx.hours} />
+      )}
 
       <section>
         <SectionHead title="Open signals" meta="ranked by blast radius" />
@@ -124,7 +152,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
                 >
                   {s.metric}
                 </div>
-                <div style={{ font: `400 10px/1.5 ${FONT.mono}`, color: 'rgba(255,255,255,0.32)', marginTop: 3 }}>
+                <div style={{ font: `400 10px/1.5 ${FONT.mono}`, color: C.t3, marginTop: 3 }}>
                   {s.source}
                 </div>
               </div>
@@ -461,4 +489,103 @@ function relAge(iso?: string) {
   if (h < 1) return `${Math.max(1, Math.floor(ms / 60_000))}m`;
   if (h < 48) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
+}
+
+/**
+ * The generated narrative.
+ *
+ * It receives signals health.ts has ALREADY computed and writes prose about them.
+ * It is never handed raw data to aggregate, because a subtly wrong number inside
+ * fluent prose is far harder to catch than an obviously wrong one — and this is
+ * the tool that exists because a wrong number looked fine.
+ *
+ * Three properties make it safe to put at the top of the page:
+ *
+ *   1. It sits BELOW the verdict, which is deterministic. If the prose and the
+ *      verdict ever disagree, the verdict is the one that is measured.
+ *   2. Citations are filtered Worker-side against the ids we sent, so a
+ *      fabricated source cannot render. What you see cited, we supplied.
+ *   3. It degrades like any other source. When inference is down the panel says
+ *      so and states plainly that nothing measured is affected — because nothing
+ *      on this page depends on it for a number.
+ */
+function Narrative({ signals, verdict, hours }: { signals: Signal[]; verdict: string; hours: number }) {
+  const n = useNarrative(
+    signals.map((s) => ({
+      id: s.id,
+      title: s.title,
+      evidence: s.evidence,
+      metric: s.metric,
+      source: s.source,
+      sev: s.sev
+    })),
+    verdict,
+    hours,
+    true
+  );
+
+  if (n.state === 'loading')
+    return (
+      <Generated model="…" meta="reading">
+        <div style={{ font: `400 13px/1.55 ${FONT.text}`, color: C.t3 }}>Generating…</div>
+      </Generated>
+    );
+
+  if (n.state === 'unavailable')
+    return (
+      <Generated model="—">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+          <span style={{ color: C.warnText, display: 'flex', flex: 'none' }}>
+            <Icon name="exclamationmark.triangle" size={13} />
+          </span>
+          <span
+            style={{
+              font: `600 10px/1 ${FONT.text}`,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: C.warnText
+            }}
+          >
+            Narrative unavailable
+          </span>
+        </div>
+        <div style={{ font: `400 13px/1.55 ${FONT.text}`, color: C.t2, maxWidth: '76ch' }}>
+          {reasonText(n.reason, n.detail)} The signals below are unaffected — they are measured, not generated.
+          Nothing is missing from this page except the prose.
+        </div>
+      </Generated>
+    );
+
+  const d = n.data;
+  return (
+    <Generated
+      model={d.model}
+      meta={`${(d.ms / 1000).toFixed(1)}s${d.neurons != null ? ` · ${d.neurons} neurons` : ''}`}
+    >
+      <p style={{ font: `400 15px/1.6 ${FONT.text}`, color: '#fff', margin: 0, maxWidth: '76ch' }}>{d.narrative}</p>
+      {d.citations.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+          {d.citations.map((c) => (
+            <span
+              key={c}
+              style={{
+                padding: '4px 9px',
+                borderRadius: 4,
+                background: 'rgba(255,255,255,0.05)',
+                border: LINE.edge,
+                font: `400 10.5px/1.4 ${FONT.mono}`,
+                color: C.t3
+              }}
+            >
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ font: `400 11.5px/1.55 ${FONT.text}`, color: C.t3, marginTop: 14, maxWidth: '76ch' }}>
+        Narration only. Every figure above is rendered from the signal it cites, not produced by the model — see the
+        panels below for the measured values.
+      </div>
+    </Generated>
+  );
 }

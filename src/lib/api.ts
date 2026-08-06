@@ -108,6 +108,9 @@ export type Session = {
   ownerTokenForCaller: boolean;
   /** The proxy is forwarding this caller's Access assertion — the primary identity path. */
   accessForwarding: boolean;
+  /** Whether the Workers AI binding is present, and which text model is pinned. */
+  aiEnabled: boolean;
+  aiModel: string | null;
   ownerTokenExpiresInDays: number | null;
   backendOrigin: string;
   scriptName: string;
@@ -395,3 +398,63 @@ export const useSetConfig = () => {
     }
   });
 };
+
+/* ── Inference ─────────────────────────────────────────────────────────────
+ *
+ * Both of these degrade to `unavailable` like any other source. That is the whole
+ * point: if the model is down the panel says so and every measured panel beside
+ * it is untouched, because nothing on this page depends on inference for a number.
+ */
+
+const aiPost = (path: string, body: unknown) =>
+  getJson(`/api/ai${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+export type Narrative = {
+  narrative: string;
+  /** Only ids we supplied survive the Worker's filter, so this is safe to render as provenance. */
+  citations: string[];
+  model: string;
+  ms: number;
+  neurons: number | null;
+};
+
+/**
+ * @param signals already-computed by health.ts. The model narrates them; it is
+ * never given raw data to aggregate, because a subtly wrong number in fluent
+ * prose is harder to catch than an obviously wrong one.
+ */
+export const useNarrative = (
+  signals: { id: string; title: string; evidence: string; metric: string; source: string; sev: string }[],
+  verdict: string,
+  windowHours: number,
+  enabled: boolean
+) =>
+  lift<Narrative>(
+    useQuery({
+      // Keyed on the signal ids, so it regenerates when WHAT is open changes and
+      // not merely when a count ticks. Narrating the same situation twice costs
+      // neurons and gives the operator new prose describing no new fact.
+      queryKey: ['ai-narrative', signals.map((s) => s.id).join(','), verdict, windowHours],
+      queryFn: () => aiPost('/narrative', { signals, verdict, windowHours }),
+      enabled,
+      retry: false,
+      staleTime: 5 * 60_000
+    })
+  );
+
+export type ClusterMerge = { members: string[]; total: number };
+
+export const useCluster = (groups: { msg: string; count: number }[] | null, enabled: boolean) =>
+  lift<{ merges: ClusterMerge[]; compared: number; model?: string; threshold?: number }>(
+    useQuery({
+      queryKey: ['ai-cluster', (groups ?? []).map((g) => g.msg).join('|').slice(0, 400)],
+      queryFn: () => aiPost('/cluster', { groups }),
+      enabled: enabled && Boolean(groups && groups.length > 1),
+      retry: false,
+      staleTime: 5 * 60_000
+    })
+  );

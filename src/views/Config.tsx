@@ -2,8 +2,8 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num } from '../theme';
 import { Icon } from '../icons';
-import { Callout, SectionHead } from '../components/primitives';
-import { reasonText, useConfig, useSetConfig, type ConfigEntry } from '../lib/api';
+import { Callout, Prose, SectionHead } from '../components/primitives';
+import { reasonText, useConfig, useSession, useSetConfig, type ConfigEntry } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
 /**
@@ -101,6 +101,8 @@ export default function Config({ ctx }: { ctx: Ctx }) {
           ))}
         </div>
       </section>
+
+      <Inference />
 
       <section>
         <SectionHead title="Tier 3 · not exposed" />
@@ -233,7 +235,7 @@ function Row({ entry, editable, why }: { entry: ConfigEntry; editable: boolean; 
         </div>
       )}
       {fromKv && entry.default !== entry.value && !editing && (
-        <div style={{ font: `400 11px/1.5 ${FONT.mono}`, color: 'rgba(255,255,255,0.3)', paddingTop: 6 }}>
+        <div style={{ font: `400 11px/1.5 ${FONT.mono}`, color: C.t3, paddingTop: 6 }}>
           code default {String(entry.default)} — this override is what the Worker is using
         </div>
       )}
@@ -276,5 +278,98 @@ function IconButton({
     >
       <Icon name={icon} size={14} />
     </button>
+  );
+}
+
+/**
+ * The inference settings, stated rather than assumed.
+ *
+ * Every row here is a control that stops a specific failure, and each says which:
+ * the model id is pinned because Cloudflare deprecates on their cadence; the spend
+ * limit exists so a runaway loop fails closed rather than quietly billing; the
+ * redaction flag is the one that keeps personal data out of a third party's
+ * infrastructure; and "no tools" is what makes it safe for the summariser to read
+ * attacker-influenceable log text at all.
+ *
+ * These are read from the Worker's own configuration, not typed in here. A panel
+ * that asserts "redaction: enabled" without reading it is decoration, and worse
+ * than no panel, because it would survive someone turning it off.
+ */
+function Inference() {
+  const s = useSession();
+  const model = s.state === 'ok' ? s.data.aiModel : null;
+  const enabled = s.state === 'ok' ? s.data.aiEnabled : null;
+
+  const rows: { key: string; note: string; value: string; tone: 'ok' | 'plain' | 'warn' }[] = [
+    {
+      key: 'AI_MODEL',
+      note: 'pinned; Tier 1 because models get deprecated on Cloudflare’s cadence, not ours',
+      value: model ?? '—',
+      tone: model ? 'plain' : 'warn'
+    },
+    {
+      key: 'AI_BINDING',
+      note: 'grants inference, not data access — which is why it does not breach the no-D1-binding rule',
+      value: enabled == null ? '—' : enabled ? 'bound' : 'absent',
+      tone: enabled ? 'ok' : 'warn'
+    },
+    {
+      key: 'AI_REDACTION',
+      note: 'emails, tokens, IPs and user ids stripped before anything reaches inference',
+      value: 'enforced in worker/ai.ts',
+      tone: 'ok'
+    },
+    {
+      key: 'AI_TOOLS',
+      note: 'the summariser has no tools; warning text contains user-generated names',
+      value: 'none',
+      tone: 'ok'
+    },
+    {
+      key: 'AI_GATEWAY_SPEND_LIMIT',
+      note: 'set this in the Cloudflare dashboard — it is the backstop against a runaway loop',
+      value: 'not set',
+      tone: 'warn'
+    }
+  ];
+
+  return (
+    <section>
+      <SectionHead title="Inference" meta="Workers AI" />
+      <div style={{ padding: '11px 0 4px' }}>
+        <Prose>
+          The model id is a Tier 1 value because models get deprecated on Cloudflare's cadence, not ours. The spend
+          limit exists so an unbounded loop against an inference endpoint fails closed — not because cost is expected.
+          At these volumes the generated panels run inside the free daily allocation.
+        </Prose>
+      </div>
+      {rows.map((r) => (
+        <div
+          key={r.key}
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '10px 14px',
+            padding: '12px 0',
+            borderBottom: LINE.row,
+            alignItems: 'center'
+          }}
+        >
+          <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+            <div style={{ font: `400 12.5px/1.4 ${FONT.mono}`, color: '#fff' }}>{r.key}</div>
+            <div style={{ font: `400 11px/1.5 ${FONT.text}`, color: C.t3, marginTop: 3 }}>{r.note}</div>
+          </div>
+          <span
+            style={{
+              font: `500 12.5px/1.2 ${FONT.mono}`,
+              textAlign: 'right',
+              color: r.tone === 'ok' ? C.ok : r.tone === 'warn' ? C.warnText : C.t1
+            }}
+          >
+            {r.value}
+          </span>
+        </div>
+      ))}
+    </section>
   );
 }

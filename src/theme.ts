@@ -16,7 +16,19 @@ export const C = {
   badDim: '#8A3029',
   t1: '#fff',
   t2: 'rgba(255,255,255,0.62)',
-  t3: 'rgba(255,255,255,0.38)'
+  /**
+   * 0.50, not the 0.38 this shipped with.
+   *
+   * Design measured it: 0.38 composites to 3.44:1 on #0A0C0D and fails WCAG AA at
+   * every size the type scale assigns t3 — provenance meta at 10.5px, stat labels
+   * at 9.5px. 0.50 measures 5.37:1 and passes.
+   *
+   * Worth being blunt about: this is the tier used for PROVENANCE, and provenance
+   * is the thing that tells an operator whether to believe a number. Setting it
+   * below legibility is not a subtle aesthetic choice, it is hiding the part that
+   * makes the rest trustworthy.
+   */
+  t3: 'rgba(255,255,255,0.50)'
 } as const;
 
 export const BG = {

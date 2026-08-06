@@ -174,7 +174,7 @@ export default function App() {
           <img src="/assets/rad-logo-128.png" alt="" style={{ width: 26, height: 26, borderRadius: 7, display: 'block', flex: 'none' }} />
           <div style={{ minWidth: 0 }}>
             <div style={{ font: `600 14px/1.2 ${FONT.display}`, letterSpacing: '-0.018em' }}>Rad.FM Ops</div>
-            <div style={{ font: `400 10.5px/1.4 ${FONT.mono}`, color: 'rgba(255,255,255,0.38)', letterSpacing: '0.04em' }}>
+            <div style={{ font: `400 10.5px/1.4 ${FONT.mono}`, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.04em' }}>
               {demo ? `demo · ${demo}` : 'production'}
             </div>
           </div>
@@ -189,7 +189,7 @@ export default function App() {
                   font: `600 9.5px/1 ${FONT.text}`,
                   letterSpacing: '0.16em',
                   textTransform: 'uppercase',
-                  color: 'rgba(255,255,255,0.3)',
+                  color: C.t3,
                   padding: '16px 8px 8px'
                 }}
               >
@@ -296,7 +296,7 @@ export default function App() {
               </div>
             </div>
           </div>
-          <div style={{ font: `400 10px/1.5 ${FONT.mono}`, color: 'rgba(255,255,255,0.3)' }}>
+          <div style={{ font: `400 10px/1.5 ${FONT.mono}`, color: C.t3 }}>
             role resolved server-side
             <br />
             per request
@@ -493,11 +493,11 @@ export default function App() {
             alignItems: 'center'
           }}
         >
-          <span style={{ font: `400 11px/1.5 ${FONT.mono}`, color: 'rgba(255,255,255,0.3)' }}>
+          <span style={{ font: `400 11px/1.5 ${FONT.mono}`, color: C.t3 }}>
             radfm-ops · read-only · no D1 binding
           </span>
           <span style={{ flex: 1 }} />
-          <span style={{ font: `400 11px/1.5 ${FONT.mono}`, color: 'rgba(255,255,255,0.3)' }}>
+          <span style={{ font: `400 11px/1.5 ${FONT.mono}`, color: C.t3 }}>
             {session.state === 'ok' && !session.data.accessConfigured
               ? 'Access NOT configured — dev bypass active'
               : 'Access SSO + admin_users role check'}

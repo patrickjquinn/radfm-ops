@@ -30,6 +30,21 @@ export type Bindings = {
    */
   OPS_BACKEND_JWT?: string;
   OPS_OWNER_EMAIL?: string;
+  /**
+   * Workers AI. Grants INFERENCE, not data access — which is why adding it does
+   * not weaken the standing invariant that this Worker gets no D1 binding.
+   *
+   * Optional in the type on purpose: every AI route checks for it and degrades to
+   * "unavailable" rather than throwing, so a deploy without the binding loses the
+   * generated panels and nothing else.
+   */
+  AI?: Ai;
+  /**
+   * The text model id, pinned. Tier 1 because Cloudflare deprecates models on
+   * their cadence rather than ours — `gemma-3-12b` was already marked deprecated
+   * in May 2026 — so this must be changeable without a code release.
+   */
+  AI_MODEL?: string;
 };
 
 export type Variables = {

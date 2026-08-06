@@ -128,7 +128,7 @@ function SourceHead() {
         font: `600 9.5px/1 ${FONT.text}`,
         letterSpacing: '0.12em',
         textTransform: 'uppercase',
-        color: 'rgba(255,255,255,0.38)'
+        color: 'rgba(255,255,255,0.5)'
       }}
     >
       {cols.map((c) => (
@@ -236,7 +236,7 @@ function CauseRows({ rows }: { rows: { cause: string; n: number }[] }) {
           <span style={{ ...num, width: 64, textAlign: 'right', font: `500 12.5px/1.2 ${FONT.mono}`, color: tone(r.cause) }}>
             {r.n.toLocaleString()}
           </span>
-          <span style={{ width: 52, textAlign: 'right', font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.38)' }}>
+          <span style={{ width: 52, textAlign: 'right', font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.5)' }}>
             {((r.n / total) * 100).toFixed(1)}%
           </span>
         </div>

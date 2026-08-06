@@ -21,10 +21,29 @@
 
   "observability": { "enabled": true, "head_sampling_rate": 1 },
 
+  // Workers AI. Inference only — this grants no data access, which is why it does
+  // not weaken the "no D1 binding on the ops Worker" invariant.
+  "ai": { "binding": "AI" },
+
   "vars": {
     "CF_ACCOUNT_ID": "49b85a65aa7b9cd658945400b972d2b7",
     "BACKEND_ORIGIN": "https://api.rad-fm.com",
     "BACKEND_SCRIPT_NAME": "rad-fm-backend",
+
+    // Tier 1: Cloudflare deprecates models on their cadence, not ours (gemma-3-12b
+    // was already deprecated in May 2026), so this must be changeable without a
+    // code release.
+    //
+    // An INSTRUCT model, deliberately. glm-4.7-flash was pinned first on price
+    // ($0.06/M in) and it does not work for this job: it reasons before answering,
+    // so it spent 1,600 tokens on a chain of thought, returned content: null with
+    // finish_reason: length, and took ~40s doing it. On a page whose promise is a
+    // ten-second answer, reasoning is pure cost in both latency and tokens.
+    //
+    // 26,668 neurons/M in and 204,805/M out — about 73 neurons per narration, so
+    // roughly 137 a day inside the free allocation. More per call than glm, and
+    // the only one of the two that produces a narration at all.
+    "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
 
     // The one Access identity the Worker will attach OPS_BACKEND_JWT for. Anyone
     // else added to the Access policy supplies their own token, so admin_audit

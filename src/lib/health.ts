@@ -59,6 +59,15 @@ const MIN_SAMPLE = 30;
 const DJ_MIN_WINDOW_HOURS = 24;
 
 export type Signal = {
+  /**
+   * Stable identity, independent of the title.
+   *
+   * Titles interpolate live values ("3 requests returned zero tracks"), so they
+   * change as the system changes. The narrative cites these ids and the Worker
+   * drops any citation naming an id it was not given — that check is only worth
+   * anything if the id is stable across renders.
+   */
+  id: string;
   title: string;
   evidence: string;
   metric: string;
@@ -119,6 +128,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   // verdict and the number of rows in the list are all the same number.
   for (const u of unreadable) {
     signals.push({
+      id: `signal:unread:${u.go}`,
       title: `${u.label} could not be read`,
       evidence:
         u.s.state === 'unavailable'
@@ -136,6 +146,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   // dashboard has silently gone to "unavailable".
   if (expiringInDays != null && expiringInDays <= 14)
     signals.unshift({
+      id: 'signal:owner-token',
       title:
         expiringInDays <= 0
           ? 'Owner token has expired'
@@ -151,6 +162,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   const probeEmpty = probe.state === 'ok' && probe.data.rows.length === 0;
   if (probeEmpty) {
     signals.push({
+      id: 'signal:ae-unverified',
       title: 'Analytics Engine returned no datapoints',
       evidence:
         'Ingestion lags — a datapoint can take over a minute to become queryable — and writes are fire-and-forget, so one empty query is not proof a code path is cold. Check the binding is deployed before concluding anything.',
@@ -178,6 +190,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
 
   if (djPct != null && hours >= DJ_MIN_WINDOW_HOURS && djPct >= DJ_NONOK_WARN)
     signals.unshift({
+      id: 'signal:dj-degeneracy',
       title: 'DJ degeneracy rising',
       evidence: `Non-ok share is ${Math.round(djPct)}% against a ~14% baseline. The guard is rejecting more takes, and regressions here are otherwise only detectable by listening to the radio.`,
       metric: `${Math.round(djPct)}%`,
@@ -192,6 +205,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   // fallback-rate signal because it is strictly worse.
   if (recsZero != null && recsZero > 0)
     signals.unshift({
+      id: 'signal:recs-zero-tracks',
       title: `${recsZero} request${recsZero === 1 ? '' : 's'} returned zero tracks`,
       evidence:
         'A dead player, not a degraded one. These do not show up as "degraded" — the fallback did not rescue them, it returned nothing. Check poolSource for the cause.',
@@ -203,6 +217,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
 
   if (recsPct != null && recsPct >= RECS_DEGRADED_WARN)
     signals.unshift({
+      id: 'signal:recs-fallback',
       title: 'Recommendation fallback rate elevated',
       evidence: 'The orchestrator is degrading gracefully, so nothing throws and nothing alerts.',
       metric: `${Math.round(recsPct)}%`,
@@ -213,6 +228,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
 
   if (missingPlayedAt != null && missingPlayedAt > 0)
     signals.unshift({
+      id: 'signal:played-at',
       title: 'past_plays rows missing played_at',
       evidence: 'The insert has regressed. The recommender’s "recently played" exclusion becomes arbitrary as this climbs.',
       metric: missingPlayedAt.toLocaleString(),
@@ -227,6 +243,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   const fillRate = setlists.state === 'ok' ? setlists.data.fillRate : null;
   if (fillRate != null && fillRate < 0.7)
     signals.unshift({
+      id: 'signal:setlist-fill',
       title: 'Setlist fill rate below baseline',
       evidence:
         'Failures log as warnings, so nothing throws and nothing alerts. This is the 1,094-warning bug’s signature.',
@@ -238,6 +255,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
 
   if (fourxxTotal != null && fourxxTotal > 1000)
     signals.unshift({
+      id: 'signal:4xx-elevated',
       title: 'Elevated 4xx',
       evidence: 'The platform’s headline Errors metric excludes 4xx entirely, so this does not appear there.',
       metric: fourxxTotal.toLocaleString(),
@@ -306,14 +324,15 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
 /**
  * One row per distinct signal, first occurrence wins so ranking is preserved.
  *
- * Keyed on title because that is what the operator reads: two rows with the same
- * title are the same claim made twice, whatever produced them. This exists
- * because a copy-pasted block did exactly that, and because the cost of the bug
- * is not the duplicate row — it is that the count beside it stops matching.
+ * Keyed on the stable id rather than the title, because titles interpolate live
+ * values and two renderings of the same signal can differ in text while being the
+ * same claim. This exists because a copy-pasted block emitted one twice, and
+ * because the cost of that bug is not the duplicate row — it is that the count
+ * beside it stops matching.
  */
 export function dedupeSignals(signals: Signal[]): Signal[] {
   const seen = new Set<string>();
-  return signals.filter((s) => (seen.has(s.title) ? false : (seen.add(s.title), true)));
+  return signals.filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)));
 }
 
 function demoHealth(demo: Scenario): Health {

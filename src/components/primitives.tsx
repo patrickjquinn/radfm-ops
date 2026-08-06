@@ -28,7 +28,7 @@ export function SectionHead({ title, meta }: { title: string; meta?: string }) {
       </h2>
       {/* Provenance on every panel. These sources are not equally trustworthy
           and the UI must not flatten that. */}
-      {meta && <div style={{ font: `400 10.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.32)' }}>{meta}</div>}
+      {meta && <div style={{ font: `400 10.5px/1 ${FONT.mono}`, color: C.t3 }}>{meta}</div>}
     </div>
   );
 }
@@ -177,7 +177,7 @@ export function Unavailable({ reason, detail, what }: { reason: string; detail?:
 
 export function Loading({ what }: { what: string }) {
   return (
-    <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.38)' }}>
+    <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)' }}>
       Reading {what}…
     </div>
   );
@@ -236,6 +236,61 @@ export function ActionButton({
   );
 }
 
+/**
+ * The wrapper every piece of generated content lives in.
+ *
+ * Distinguished by TEXTURE, not by colour — a hatched surface, a dashed border and
+ * an explicit GENERATED chip. Colour in this product is fully committed to
+ * severity: teal means healthy, amber degraded, red failing. Adding a fourth hue
+ * for "written by a model" would break the one rule that lets an operator answer
+ * "which of these is bad?" at a glance, and would imply that generated is its own
+ * kind of state. It is not. It is a different kind of PROVENANCE, which is why it
+ * reads as a surface treatment and carries its model id like any other source.
+ */
+export function Generated({
+  model,
+  meta,
+  children
+}: {
+  model: string;
+  meta?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        border: '1px dashed rgba(255,255,255,0.16)',
+        borderRadius: 8,
+        padding: '18px 20px',
+        background: 'repeating-linear-gradient(135deg,rgba(255,255,255,0.022) 0 6px,transparent 6px 12px)'
+      }}
+    >
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '4px 9px',
+            borderRadius: 4,
+            background: 'rgba(255,255,255,0.07)',
+            border: '1px dashed rgba(255,255,255,0.28)',
+            font: `600 9px/1 ${FONT.text}`,
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            color: C.t2
+          }}
+        >
+          Generated
+        </span>
+        <span style={{ font: `400 10.5px/1 ${FONT.mono}`, color: C.t3 }}>{model}</span>
+        <span style={{ flex: 1 }} />
+        {meta && <span style={{ font: `400 10.5px/1 ${FONT.mono}`, color: C.t3 }}>{meta}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 /** A row in the ranked lists: label, value, note. */
 export function KeyRow({
   label,
@@ -260,7 +315,7 @@ export function KeyRow({
             width: 96,
             textAlign: 'right',
             font: `400 11px/1.4 ${FONT.text}`,
-            color: 'rgba(255,255,255,0.38)'
+            color: 'rgba(255,255,255,0.5)'
           }}
         >
           {note}

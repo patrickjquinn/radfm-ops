@@ -148,6 +148,7 @@ describe('reasonText', () => {
  */
 describe('dedupeSignals', () => {
   const sig = (title: string, sev: Signal['sev'] = 'bad'): Signal => ({
+    id: `signal:${title}`,
     title,
     evidence: '',
     metric: '1',
@@ -167,6 +168,17 @@ describe('dedupeSignals', () => {
     const out = dedupeSignals([first, sig('other', 'warn'), sig('dup', 'warn')]);
     expect(out[0]).toBe(first);
     expect(out[0].sev).toBe('bad');
+  });
+
+  /**
+   * Titles interpolate live values, so the same signal can render as different
+   * text between passes. Keying on the title would let that slip through as two
+   * rows — which is the failure, not the cosmetic detail.
+   */
+  it('keys on the stable id, not the interpolated title', () => {
+    const a: Signal = { ...sig('3 requests returned zero tracks'), id: 'signal:recs-zero-tracks' };
+    const b: Signal = { ...sig('4 requests returned zero tracks'), id: 'signal:recs-zero-tracks' };
+    expect(dedupeSignals([a, b])).toHaveLength(1);
   });
 
   it('leaves a list with no duplicates untouched', () => {
