@@ -433,6 +433,67 @@ app.get('/ae/probe', async (c) => {
   return c.json({ ok: true, rows: out.data?.data ?? [] });
 });
 
+/**
+ * Listening, from the append-only play log.
+ *
+ * This is the ONLY source that can answer historical questions about listening.
+ * `past_plays` in D1 cannot: its primary key collapses to (user_id, song), so a
+ * replay overwrites rather than appends. It is current state wearing a log's
+ * clothes, which is why the Scale panel labels its counts "current state" and
+ * why 24h activity is explicitly NOT called DAU.
+ *
+ * blobs [play, trackId, isrc, artist, title], doubles [1], index = userId. One
+ * row per play, so count() is the play count and count(DISTINCT index1) is
+ * listeners. `uniq()` is NOT in the Analytics Engine SQL subset - it returns
+ * `422 unknown function call: UNIQ` - and neither is `toDate()`; bucketing uses
+ * `toStartOfDay()`.
+ *
+ * History starts at the deploy date and CANNOT be backfilled - the events were
+ * never recorded anywhere before. Any window that predates it is genuinely empty
+ * rather than quiet, and the UI has to say which.
+ */
+app.get('/ae/plays', async (c) => {
+  const gate = requireToken(c.env);
+  if (gate) return c.json(gate);
+  const days = Math.min(Math.max(Number(c.req.query('days') ?? 30), 1), 90);
+
+  const [totals, daily, artists, tracks] = await Promise.all([
+    ae(
+      c.env,
+      `SELECT count() AS plays, count(DISTINCT index1) AS listeners, count(DISTINCT blob2) AS tracks
+       FROM rad_fm_events WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '${days}' DAY`
+    ),
+    ae(
+      c.env,
+      `SELECT toStartOfDay(timestamp) AS day, count() AS plays, count(DISTINCT index1) AS listeners
+       FROM rad_fm_events WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '${days}' DAY
+       GROUP BY day ORDER BY day`
+    ),
+    ae(
+      c.env,
+      `SELECT blob4 AS artist, count() AS plays, count(DISTINCT index1) AS listeners
+       FROM rad_fm_events WHERE blob1 = 'play' AND blob4 != '' AND timestamp > now() - INTERVAL '${days}' DAY
+       GROUP BY artist ORDER BY plays DESC LIMIT 15`
+    ),
+    ae(
+      c.env,
+      `SELECT blob5 AS title, blob4 AS artist, count() AS plays
+       FROM rad_fm_events WHERE blob1 = 'play' AND blob5 != '' AND timestamp > now() - INTERVAL '${days}' DAY
+       GROUP BY title, artist ORDER BY plays DESC LIMIT 15`
+    )
+  ]);
+  for (const q of [totals, daily, artists, tracks]) if (q.ok === false) return c.json(q);
+
+  return c.json({
+    ok: true,
+    days,
+    totals: totals.data?.data?.[0] ?? null,
+    daily: daily.data?.data ?? [],
+    artists: artists.data?.data ?? [],
+    tracks: tracks.data?.data ?? []
+  });
+});
+
 /** DJ line outcomes. blob3 is degeneracyReason, or 'ok'. */
 app.get('/ae/dj', async (c) => {
   const gate = requireToken(c.env);
