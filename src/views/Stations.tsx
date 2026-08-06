@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
-import { Prose, SectionHead, Source } from '../components/primitives';
+import { Collapsible, Panel, Prose, Source } from '../components/primitives';
 import { useStations, type Station } from '../lib/api';
 
 /**
@@ -60,8 +60,7 @@ export default function Stations({ ctx }: { ctx: Ctx }) {
         />
       </form>
 
-      <section>
-        <SectionHead title="Stations" meta="D1 · stations ⋈ user_stations" />
+      <Panel title="Stations" meta="D1 · stations ⋈ user_stations">
         <Head />
         {demo ? (
           <Rows rows={rows} />
@@ -76,7 +75,7 @@ export default function Stations({ ctx }: { ctx: Ctx }) {
             references it. They are the cleanup candidates, not a failure.
           </Prose>
         </div>
-      </section>
+      </Panel>
     </div>
   );
 }
@@ -112,9 +111,14 @@ function Head() {
 }
 
 function Rows({ rows }: { rows: Station[] }) {
+  // 341 stations is a scroll, not a reading. Ten is enough to see the shape of
+  // the list and whether the search worked; the rest is one click away.
   return (
-    <>
-      {rows.map((s) => {
+    <Collapsible
+      rows={rows}
+      initial={10}
+      noun="stations"
+      render={(s) => {
         const orphan = Number(s.subscribers) === 0;
         return (
           <div key={s.id} style={{ display: 'flex', gap: 14, padding: '11px 0', borderBottom: LINE.row, alignItems: 'baseline' }}>
@@ -168,8 +172,8 @@ function Rows({ rows }: { rows: Station[] }) {
             </span>
           </div>
         );
-      })}
-    </>
+      }}
+    />
   );
 }
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
-import { Callout, Prose, SectionHead } from '../components/primitives';
+import { Callout, Prose, SectionHead, Panel } from '../components/primitives';
 import { reasonText, useAiGateway, useConfig, useSession, useSetConfig, type ConfigEntry } from '../lib/api';
 import * as fx from '../lib/fixtures';
 import { WEIGHTS_SOURCE, weights } from '../lib/constants';
@@ -65,8 +65,7 @@ export default function Config({ ctx }: { ctx: Ctx }) {
         </div>
       )}
 
-      <section>
-        <SectionHead title="Tier 1 · runtime editable" meta="audited on write" />
+      <Panel title="Tier 1 · runtime editable" meta="audited on write">
         {entries.map((c) => (
           <Row
             key={c.key}
@@ -75,10 +74,9 @@ export default function Config({ ctx }: { ctx: Ctx }) {
             why={!backendServesConfig ? 'Phase 4 - the backend config route is not built yet' : 'Requires operator'}
           />
         ))}
-      </section>
+      </Panel>
 
-      <section>
-        <SectionHead title="Tier 2 · read-only, change via PR" meta={`${WEIGHTS_SOURCE} · not read live`} />
+      <Panel title="Tier 2 · read-only, change via PR" meta={`${WEIGHTS_SOURCE} · not read live`}>
         <div style={{ font: `400 12.5px/1.6 ${FONT.text}`, color: 'rgba(255,255,255,0.5)', padding: '12px 0', maxWidth: '80ch' }}>
           The recommendation weights are a tuned system, not independent dials, and they are meant to sum sensibly. They
           live on the Recommendations view next to the outcome metrics, so a change can be seen rather than guessed.
@@ -102,18 +100,17 @@ export default function Config({ ctx }: { ctx: Ctx }) {
             </div>
           ))}
         </div>
-      </section>
+      </Panel>
 
       <Inference />
 
-      <section>
-        <SectionHead title="Tier 3 · not exposed" />
+      <Panel title="Tier 3 · not exposed">
         <div style={{ font: `400 12.5px/1.6 ${FONT.text}`, color: 'rgba(255,255,255,0.5)', paddingTop: 12, maxWidth: '80ch' }}>
           Prompt pools and exemplars are version-controlled creative assets with a test suite asserting their properties.
           Editing them through a web form loses review, loses history, and loses the tests. They are deliberately absent
           from this UI rather than disabled in it.
         </div>
-      </section>
+      </Panel>
     </div>
   );
 }
@@ -378,8 +375,7 @@ function Inference() {
   ];
 
   return (
-    <section>
-      <SectionHead title="Inference" meta="Workers AI" />
+    <Panel title="Inference" meta="Workers AI">
       <div style={{ padding: '11px 0 4px' }}>
         <Prose>
           Every row is read from the running Worker or the gateway, never asserted. A panel that claims a safety
@@ -413,6 +409,6 @@ function Inference() {
           </span>
         </div>
       ))}
-    </section>
+    </Panel>
   );
 }

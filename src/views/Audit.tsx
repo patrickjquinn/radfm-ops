@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, GAP } from '../theme';
-import { Callout, SectionHead, Source } from '../components/primitives';
+import { Callout, Collapsible, Panel, Source } from '../components/primitives';
 import { useAdminAudit } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -16,8 +16,7 @@ export default function Audit({ ctx }: { ctx: Ctx }) {
         <code style={{ font: `400 12px/1 ${FONT.mono}`, color: '#7BCFC5' }}>admin_audit</code> is append-only.
       </Callout>
 
-      <section>
-        <SectionHead title="Admin actions" meta="admin_audit · newest first" />
+      <Panel title="Admin actions" meta="admin_audit · newest first">
         <Head />
         {demo ? (
           <Rows rows={fx.auditRows} />
@@ -45,7 +44,7 @@ export default function Audit({ ctx }: { ctx: Ctx }) {
             }}
           </Source>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }
@@ -90,8 +89,11 @@ function Head() {
 
 function Rows({ rows }: { rows: { at: string; actor: string; action: string; target: string; tone?: string }[] }) {
   return (
-    <>
-      {rows.map((a, i) => (
+    <Collapsible
+      rows={rows}
+      initial={12}
+      noun="entries"
+      render={(a, i) => (
         <div key={i} style={{ display: 'flex', gap: 14, padding: '11px 0', borderBottom: LINE.row, alignItems: 'baseline' }}>
           <span style={{ width: 132, flex: 'none', font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.4)' }}>
             {a.at}
@@ -132,8 +134,8 @@ function Rows({ rows }: { rows: { at: string; actor: string; action: string; tar
             {a.target}
           </span>
         </div>
-      ))}
-    </>
+      )}
+    />
   );
 }
 

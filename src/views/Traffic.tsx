@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
+import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid, Panel } from '../components/primitives';
 import { useStatus4xx, useTraffic } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -30,8 +30,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
         </Source>
       )}
 
-      <section>
-        <SectionHead title="4xx by route and status" meta="Observability · 3d retention" />
+      <Panel title="4xx by route and status" meta="Observability · 3d retention">
         {demo ? (
           <FourxxRows rows={fx.fourxx(demo)} />
         ) : (
@@ -73,10 +72,9 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
             }}
           </Source>
         )}
-      </section>
+      </Panel>
 
-      <section>
-        <SectionHead title="Request volume" meta="GraphQL · no HTTP status in this dataset" />
+      <Panel title="Request volume" meta="GraphQL · no HTTP status in this dataset">
         {demo ? (
           <Volume bars={fx.volume(demo)} start={ctx.range === '6h' ? '03:48' : 'yesterday 09:48'} />
         ) : (
@@ -84,7 +82,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
             {(d) => <Volume bars={toBars(d.series)} start={`${ctx.range} ago`} />}
           </Source>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }

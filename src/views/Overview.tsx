@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { BG, C, CARD, ELEV, FONT, GAP, LINE, MOTION, dot, focusLift, num, stateColour } from '../theme';
 import { Icon } from '../icons';
-import { Generated, KeyRow, SectionHead, Source } from '../components/primitives';
+import { Generated, KeyRow, SectionHead, Source, Panel } from '../components/primitives';
 import {
   reasonText,
   statValue,
@@ -202,8 +202,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
         during one.
       */}
       {attention.length > 0 && (
-        <section>
-          <SectionHead title="Worth a look" meta="not faults" />
+        <Panel title="Worth a look" meta="not faults">
           {attention.map((a) => (
             <button
               key={a.title}
@@ -240,15 +239,22 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               </span>
             </button>
           ))}
-        </section>
+        </Panel>
       )}
 
       {!demo && signals.length >= 2 && (
         <Narrative signals={signals} verdict={verdict.title} hours={ctx.hours} />
       )}
 
-      <section>
-        <SectionHead title="Open signals" meta="ranked by blast radius" />
+      {/*
+        An empty "Open signals" card is a titled box with nothing in it - the
+        commonest state of this page, and the one where it read as broken rather
+        than as calm. The verdict two cards up already says "no signals open", so
+        a second empty frame repeating it is furniture. It renders when there is
+        something in it and not otherwise.
+      */}
+      {signals.length > 0 && (
+      <Panel title="Open signals" meta="ranked by blast radius">
         {signals.map((s) => (
           <button
             key={s.title}
@@ -297,7 +303,8 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
             </div>
           </button>
         ))}
-      </section>
+      </Panel>
+      )}
 
       <ServiceState
         ctx={ctx}
@@ -308,8 +315,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,300px),1fr))', gap: 20 }}>
-        <section>
-          <SectionHead title="Scale" meta="D1 · current state" />
+        <Panel title="Scale" meta="D1 · current state">
           {demo ? (
             fx.scaleRows.map((r) => <KeyRow key={r.label} label={r.label} value={r.value} note={r.note} />)
           ) : (
@@ -317,10 +323,9 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               {(d) => <ScaleRows d={d} />}
             </Source>
           )}
-        </section>
+        </Panel>
 
-        <section>
-          <SectionHead title="Deploys" meta="Workers Scripts · last 100" />
+        <Panel title="Deploys" meta="Workers Scripts · last 100">
           {demo ? (
             <>
               {fx.deploys.map((d) => (
@@ -350,7 +355,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               )}
             </Source>
           )}
-        </section>
+        </Panel>
       </div>
     </div>
   );
@@ -834,8 +839,25 @@ function OnAir({ state, demo }: { state: ReturnType<typeof useOnAir>; demo: bool
       <div style={{ font: `400 12px/1.5 ${FONT.text}`, color: C.t3, marginBottom: 12 }}>
         {listeners.last3h} in the last 3h · {listeners.last24h} today · each on their own station
       </div>
+      {/*
+        These rows are the last play per listener within three hours, not a live
+        feed. Under a teal "2 listening now" they read correctly. Under an amber
+        "Quiet for 30m" they read as two people currently listening, which is the
+        opposite of what the line above just said - so the list says which it is.
+      */}
       {nowPlaying.length > 0 && (
         <div style={{ display: 'grid', gap: 5, marginBottom: 16 }}>
+          <div
+            style={{
+              font: `600 9px/1 ${FONT.text}`,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: C.t3,
+              marginBottom: 3
+            }}
+          >
+            {now > 0 ? 'Playing now' : 'Last heard'}
+          </div>
           {nowPlaying.map((t) => (
             <div
               key={t.listener}

@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Callout, Collapsible, Generated, Prose, SectionHead, Source } from '../components/primitives';
+import { Callout, Collapsible, Generated, Prose, SectionHead, Source, Panel } from '../components/primitives';
 import { useCluster, useLogs, type LogGroup } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -25,11 +25,7 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
         literals collapsed as well, so one failure mode is one row rather than one row per artist name.
       </Callout>
 
-      <section>
-        <SectionHead
-          title="Warnings by normalised message"
-          meta={demo ? `${warnRows.reduce((a, b) => a + b.count, 0).toLocaleString()} in window` : `${hours}h window`}
-        />
+      <Panel title="Warnings by normalised message" meta={demo ? `${warnRows.reduce((a, b) => a + b.count, 0).toLocaleString()} in window` : `${hours}h window`}>
         {demo ? (
           <WarnRows rows={warnRows} />
         ) : (
@@ -65,10 +61,9 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
             }
           </Source>
         )}
-      </section>
+      </Panel>
 
-      <section>
-        <SectionHead title="Errors" meta="level=error" />
+      <Panel title="Errors" meta="level=error">
         {demo ? (
           demo === 'incident' ? (
             <ErrorRows rows={fx.errors} />
@@ -92,7 +87,7 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
             }
           </Source>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }

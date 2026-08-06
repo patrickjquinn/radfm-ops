@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Prose, SectionHead, Source, StatGrid } from '../components/primitives';
+import { Prose, SectionHead, Source, StatGrid, Panel } from '../components/primitives';
 import { useAeRecs } from '../lib/api';
 import * as fx from '../lib/fixtures';
 import { WEIGHTS_SOURCE, weights } from '../lib/constants';
@@ -19,8 +19,7 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
         </Source>
       )}
 
-      <section>
-        <SectionHead title="Pool health by source" meta="trackRecommendations" />
+      <Panel title="Pool health by source" meta="trackRecommendations">
         <SourceHead />
         {demo ? (
           <SourceRows rows={fx.recSources(demo)} />
@@ -51,10 +50,9 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
             table is the only way to see it.
           </Prose>
         </div>
-      </section>
+      </Panel>
 
-      <section>
-        <SectionHead title="Why the pool collapsed" meta="rad_fm_events · poolSource" />
+      <Panel title="Why the pool collapsed" meta="rad_fm_events · poolSource">
         <div style={{ padding: '11px 0 12px' }}>
           <Prose>
             These demand opposite responses, which is why they are separated rather than counted
@@ -77,10 +75,9 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
             }
           </Source>
         )}
-      </section>
+      </Panel>
 
-      <section>
-        <SectionHead title="Scoring weights" meta={`${WEIGHTS_SOURCE} · not read live`} />
+      <Panel title="Scoring weights" meta={`${WEIGHTS_SOURCE} · not read live`}>
         <div style={{ padding: '11px 0 12px' }}>
           <Prose>
             These interact - a tuned system, not independent dials. A slider here produces confident nonsense, so they
@@ -108,7 +105,7 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
             </div>
           ))}
         </div>
-      </section>
+      </Panel>
     </div>
   );
 }

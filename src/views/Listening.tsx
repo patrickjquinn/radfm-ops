@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
+import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid, Panel } from '../components/primitives';
 import { statValue, useAdminStats, useAePlays } from '../lib/api';
 
 /**
@@ -80,11 +80,7 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
                 ]}
               />
 
-              <section>
-                <SectionHead
-                  title="Plays and listeners by day"
-                  meta={`rad_fm_events · ${d.daily.length} day${d.daily.length === 1 ? '' : 's'} recorded`}
-                />
+              <Panel title="Plays and listeners by day" meta={`rad_fm_events · ${d.daily.length} day${d.daily.length === 1 ? '' : 's'} recorded`}>
                 {d.daily.length ? (
                   <>
                     <DayRows rows={d.daily} />
@@ -110,11 +106,10 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
                 ) : (
                   <Empty text="No plays recorded in this window." />
                 )}
-              </section>
+              </Panel>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,320px),1fr))', gap: 20 }}>
-                <section>
-                  <SectionHead title="Top artists" meta="by plays" />
+                <Panel title="Top artists" meta="by plays">
                   {d.artists.length ? (
                     <RankRows
                       rows={d.artists.map((a) => ({
@@ -126,10 +121,9 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
                   ) : (
                     <Empty text="No artist data in this window." />
                   )}
-                </section>
+                </Panel>
 
-                <section>
-                  <SectionHead title="Top tracks" meta="by plays" />
+                <Panel title="Top tracks" meta="by plays">
                   {d.tracks.length ? (
                     <RankRows
                       rows={d.tracks.map((t2) => ({
@@ -141,7 +135,7 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
                   ) : (
                     <Empty text="No track data in this window." />
                   )}
-                </section>
+                </Panel>
               </div>
 
               {/*

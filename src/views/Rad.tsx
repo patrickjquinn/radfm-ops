@@ -1,7 +1,7 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
-import { Bar, Prose, SectionHead, Source } from '../components/primitives';
+import { Bar, Prose, SectionHead, Source, Panel } from '../components/primitives';
 import { useAeDj, useAeProbe, useAeUpstream } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -26,8 +26,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
       */}
       {!verified && <UnverifiedBanner detail={!demo && probe.state === 'unavailable' ? probe.detail : undefined} />}
 
-      <section>
-        <SectionHead title="DJ line outcomes by reason" meta="rad_fm_events · blob3" />
+      <Panel title="DJ line outcomes by reason" meta="rad_fm_events · blob3">
         <div style={{ padding: '11px 0 4px' }}>
           <Prose max={74}>
             A rising share of non-<code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>ok</code>{' '}
@@ -52,10 +51,9 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
             }}
           </Source>
         )}
-      </section>
+      </Panel>
 
-      <section>
-        <SectionHead title="Upstream providers" meta="trackUpstream" />
+      <Panel title="Upstream providers" meta="trackUpstream">
         {/*
           Honest about which slot mappings have actually been confirmed. `recs`
           and `dj` are validated in RUNBOOK.md; the upstream doubles are read from
@@ -90,7 +88,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
             }
           </Source>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
+import { Callout, Prose, SectionHead, Source, StatGrid, Panel } from '../components/primitives';
 import { useArtwork, useCost, type CostRow } from '../lib/api';
 import { STATE } from '../lib/vocabulary';
 
@@ -36,7 +36,22 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
           const tokens = d.models.reduce((a, m) => a + m.tokensIn + m.tokensOut, 0);
           const requests = d.models.reduce((a, m) => a + m.requests, 0);
           const unpriced = d.models.filter((m) => m.unpriced);
+          const unpricedCalls = unpriced.reduce((a, m) => a + m.requests, 0);
           const perDay = (reported / d.hours) * 24;
+          /*
+            The gateway counted image calls and the backend's own artwork event
+            counted none, in the same window, on the same screen. The page said
+            "none yet" directly above a block saying 499 calls were made - two
+            counts of the same thing disagreeing, which is the failure this
+            product exists to catch, reproduced by the product.
+
+            Neither number is deleted. The disagreement is stated, because it is
+            the actual finding: the event shipped on 6 Aug and most of those
+            calls predate it, so "none yet" is true of the event and false of
+            the world.
+          */
+          const artworkContradiction =
+            artwork.state === 'ok' && artwork.data.images === 0 && unpricedCalls > 0;
 
           return (
             <>
@@ -120,14 +135,42 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
                       Station artwork · measured by the backend
                     </div>
                     <div style={{ font: `400 12px/1.6 ${FONT.text}`, color: C.t2, maxWidth: '72ch' }}>
-                      {artwork.data.images === 0
-                        ? 'No generations recorded in this window. The event was added today, so an empty result here means not yet observed - it is not evidence that nothing was generated.'
-                        : 'Counted from the backend\u2019s own estimate rather than the gateway, which prices per token and reports images as $0. One image per station created, so this scales with signups.'}
+                      {artworkContradiction ? (
+                        <>
+                          <strong style={{ fontWeight: 500, color: C.warnText }}>
+                            These two panels disagree.
+                          </strong>{' '}
+                          The gateway counted {unpricedCalls.toLocaleString()} image call
+                          {unpricedCalls === 1 ? '' : 's'} in this window and the backend&rsquo;s own artwork event
+                          recorded none. The event shipped on 6 Aug, so most of those calls happened before anything
+                          was watching. Read this as <em>not measured</em>, never as zero spend - and if it is still
+                          reading none once the window is entirely after 6 Aug, the event is not firing.
+                        </>
+                      ) : artwork.data.images === 0 ? (
+                        'No generations recorded in this window, and the gateway saw no image calls either. The two agree, so this is absence rather than a gap in instrumentation.'
+                      ) : (
+                        'Counted from the backend\u2019s own estimate rather than the gateway, which prices per token and reports images as $0. One image per station created, so this scales with signups.'
+                      )}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ ...num, font: `500 19px/1 ${FONT.mono}`, color: artwork.data.images ? C.t1 : C.t3 }}>
-                      {artwork.data.images === 0 ? STATE.noneYet : money(artwork.data.cost)}
+                    <div
+                      style={{
+                        ...num,
+                        font: `500 19px/1 ${FONT.mono}`,
+                        color: artworkContradiction ? C.warnText : artwork.data.images ? C.t1 : C.t3
+                      }}
+                    >
+                      {/*
+                        "none yet" claims we are recording and nothing happened.
+                        When the gateway says otherwise, that claim is false and
+                        the honest word is the one for "we could not measure it".
+                      */}
+                      {artwork.data.images === 0
+                        ? artworkContradiction
+                          ? STATE.notRecorded
+                          : STATE.noneYet
+                        : money(artwork.data.cost)}
                     </div>
                     <div style={{ font: `400 10px/1.5 ${FONT.text}`, color: C.t3, marginTop: 5 }}>
                       {artwork.data.images.toLocaleString()} image{artwork.data.images === 1 ? '' : 's'}
@@ -163,15 +206,16 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
                     made. That is not free, it is <strong style={{ fontWeight: 500, color: '#fff' }}>not counted</strong>
                     . {unpriced.reduce((a, m) => a + m.requests, 0)} call
                     {unpriced.reduce((a, m) => a + m.requests, 0) === 1 ? '' : 's'} in this window are missing from
-                    every figure on this page and from the gateway's spend limit. The backend measures it separately -
-                    see the artwork panel above - and put it at roughly a quarter of the text spend, not more. It
-                    scales with signups, which is why it is worth counting, not because it is large today.
+                    every figure on this page and from the gateway's spend limit.{' '}
+                    {artworkContradiction
+                      ? 'The backend measures it separately, but its artwork event has not recorded these calls - see the panel above. The magnitude for this window is genuinely unknown; the backend measured a comparable period at roughly a quarter of the text spend.'
+                      : 'The backend measures it separately - see the artwork panel above - and put it at roughly a quarter of the text spend, not more.'}{' '}
+                    It scales with signups, which is why it is worth counting, not because it is large today.
                   </div>
                 </div>
               )}
 
-              <section>
-                <SectionHead title="By model" meta="aiGatewayRequestsAdaptiveGroups" />
+              <Panel title="By model" meta="aiGatewayRequestsAdaptiveGroups">
                 <Head />
                 {d.models.map((m) => (
                   <Row key={`${m.gateway}-${m.model}`} m={m} />
@@ -184,7 +228,7 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
                     computed column as unpriced rather than as zero.
                   </Prose>
                 </div>
-              </section>
+              </Panel>
             </>
           );
         }}

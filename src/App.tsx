@@ -129,7 +129,22 @@ export type Ctx = {
 export default function App() {
   const qc = useQueryClient();
   const [view, setView] = useState<ViewId>('overview');
-  const [range, setRange] = useState<Range>('24h');
+  /**
+   * Two windows, held separately, because they are two different questions.
+   *
+   * There was one `range` for both families and a "snap to nearest" rule when
+   * you crossed between them. Opening Listening pushed 24h to 7d, and because
+   * the nav badges are engineering counts computed over whatever `range` said,
+   * Traffic silently went from 149 to 2.1k and Overview grew a red `2` while
+   * the Overview page itself still read "Healthy - no signals open". Two counts
+   * of the same thing disagreeing on one screen is the exact failure this tool
+   * exists to prevent, and it was the shell doing it.
+   *
+   * Engineering keeps its own window. Data keeps its own. Neither moves the
+   * other, so the badges mean one fixed thing no matter where you are standing.
+   */
+  const [engRange, setEngRange] = useState<Range>('24h');
+  const [dataRange, setDataRange] = useState<Range>('7d');
   const [jwt, setJwtState] = useState(getJwt());
   const [refreshedAt, setRefreshedAt] = useState(() => Date.now());
   const [, setTick] = useState(0);
@@ -194,26 +209,12 @@ export default function App() {
   // Observability retains 3 days - surfaced rather than silently truncated.
   // Observability retains 3 days. Only the engineering views read it, so the
   // banner belongs to them - the data views reach further by design.
-  const rangeExceedsRetention = !DATA_VIEWS.includes(view) && range === '7d';
+  const isData = DATA_VIEWS.includes(view);
+  const rangeExceedsRetention = !isData && engRange === '7d';
 
   const ownerTokenExpiresInDays =
     session.state === 'ok' ? session.data.ownerTokenExpiresInDays : null;
-  /**
-   * Snap to the nearest valid range when the view family changes.
-   *
-   * Selecting 6h then opening Listening must not leave 6h highlighted on a
-   * control that no longer offers it. Falling back to the family's first option
-   * keeps the highlighted chip and the data on screen describing the same window.
-   */
-  const allowed = rangesFor(view);
-  const activeRange = allowed.includes(range)
-    ? range
-    : // Nearest by duration, not the first option. Coming back from a 90d data
-      // view would otherwise land on 6h - the largest possible jump - and quietly
-      // redefine what every nav badge is counting.
-      allowed.reduce((best, r) =>
-        Math.abs(RANGE_HOURS[r] - RANGE_HOURS[range]) < Math.abs(RANGE_HOURS[best] - RANGE_HOURS[range]) ? r : best
-      );
+  const activeRange = isData ? dataRange : engRange;
   const ctx: Ctx = {
     view,
     go: setView,
@@ -223,7 +224,9 @@ export default function App() {
     can,
     ownerTokenExpiresInDays
   };
-  const health = useHealth(RANGE_HOURS[activeRange], demo, ownerTokenExpiresInDays);
+  // Always the engineering window, never the data one. A badge that changes
+  // meaning because you opened a different page is not a health indicator.
+  const health = useHealth(RANGE_HOURS[engRange], demo, ownerTokenExpiresInDays);
   const badges = health.badges;
   const [title, sub] = TITLES[view];
 
@@ -477,7 +480,7 @@ export default function App() {
                   <button
                     key={r}
                     type="button"
-                    onClick={() => setRange(r)}
+                    onClick={() => (isData ? setDataRange(r) : setEngRange(r))}
                     aria-pressed={activeRange === r}
                     style={{
                       padding: '6px 11px',

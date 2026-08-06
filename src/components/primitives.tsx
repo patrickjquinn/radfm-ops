@@ -384,3 +384,35 @@ export function Collapsible<T>({
     </>
   );
 }
+
+/**
+ * A titled panel. Every section on every view is one of these.
+ *
+ * Sections were bare: a SectionHead with a hairline under it, then rows sitting
+ * directly on the page. Against the carded Overview that read as unfinished, and
+ * more importantly it gave the eye nothing to group by - a view was one long
+ * column of rules rather than a set of things.
+ *
+ * One component so the card treatment cannot drift view by view, which is how it
+ * drifted in the first place.
+ */
+export function Panel({
+  title,
+  meta,
+  children,
+  pad = true
+}: {
+  title: string;
+  meta?: string;
+  children: React.ReactNode;
+  pad?: boolean;
+}) {
+  return (
+    <section style={{ ...CARD, padding: pad ? 'clamp(16px,1.8vw,22px)' : 0 }}>
+      <div style={{ padding: pad ? 0 : 'clamp(16px,1.8vw,22px) clamp(16px,1.8vw,22px) 0' }}>
+        <SectionHead title={title} meta={meta} />
+      </div>
+      <div style={{ padding: pad ? 0 : '0 clamp(16px,1.8vw,22px) clamp(8px,1vw,12px)' }}>{children}</div>
+    </section>
+  );
+}

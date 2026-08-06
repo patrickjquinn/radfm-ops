@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { Ctx } from '../App';
-import { BG, C, FONT, LINE, GAP } from '../theme';
+import { BG, C, CARD, FONT, LINE, GAP, MOTION, focusLift } from '../theme';
 import { Icon } from '../icons';
-import { ActionButton, Prose, SectionHead, Source, type Tone, toneColor } from '../components/primitives';
+import { ActionButton, Collapsible, Prose, SectionHead, Source, type Tone, toneColor, Panel } from '../components/primitives';
 import { statValue, useAdminStats, useEntitlement, useUserList, useUserLookup } from '../lib/api';
 import { STATE } from '../lib/vocabulary';
 import * as fx from '../lib/fixtures';
@@ -138,8 +138,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
       )}
 
       {!demo && !isNumeric && submitted.length > 2 && canLookup && (
-        <section>
-          <SectionHead title="Matches" meta="admin/users/lookup · operator · 20 rows max" />
+        <Panel title="Matches" meta="admin/users/lookup · operator · 20 rows max">
           <Source data={lookup} what="User lookup">
             {(d) =>
               d.matches.length ? (
@@ -181,7 +180,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
               )
             }
           </Source>
-        </section>
+        </Panel>
       )}
 
       {demo ? (
@@ -193,8 +192,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
       ) : null}
 
       {(demo || userId) && (
-      <section>
-        <SectionHead title="Entitlement audit" meta="premium_audit · append-only" />
+      <Panel title="Entitlement audit" meta="premium_audit · append-only">
         {demo ? (
           <AuditRows rows={fx.entitlement(demo).audit} />
         ) : (
@@ -219,7 +217,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
             }
           </Source>
         )}
-      </section>
+      </Panel>
       )}
     </div>
   );
@@ -524,16 +522,20 @@ function UserStats({
 
   if (ctx.demo) return null;
 
+  /*
+    These were four panes welded into one bordered box with hairlines between,
+    while every other view in the product renders the same row as four separate
+    cards. Separate is also what the interaction wants: each one is a filter you
+    can select, and a selected pane inside a shared frame has nowhere to put the
+    selection except a sliver of underline. As its own card it can carry a teal
+    border and read as chosen from across the room.
+  */
   return (
     <div
       style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,190px),1fr))',
-        gap: 1,
-        background: 'rgba(255,255,255,0.08)',
-        border: LINE.edge,
-        borderRadius: 8,
-        overflow: 'hidden'
+        gap: GAP
       }}
     >
       {cards.map((c) => (
@@ -542,25 +544,36 @@ function UserStats({
           type="button"
           onClick={() => pick(c.f)}
           aria-pressed={filter === c.f}
+          onMouseEnter={(e) => Object.assign(e.currentTarget.style, focusLift(true))}
+          onMouseLeave={(e) => Object.assign(e.currentTarget.style, focusLift(false))}
           style={{
-            background: BG.card,
-            padding: '16px 18px 18px',
-            border: 'none',
+            ...CARD,
+            padding: '18px 20px 20px',
             textAlign: 'left',
             cursor: 'pointer',
-            boxShadow: filter === c.f ? `inset 0 -2px 0 ${C.ok}` : undefined
+            transition: `transform ${MOTION}, box-shadow ${MOTION}, border-color ${MOTION}`,
+            borderColor: filter === c.f ? 'rgba(63,179,166,0.55)' : 'rgba(255,255,255,0.075)',
+            boxShadow:
+              filter === c.f
+                ? `0 0 0 1px rgba(63,179,166,0.35), 0 8px 24px -12px rgba(0,0,0,0.7)`
+                : CARD.boxShadow
           }}
         >
           <div
             style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
               font: `600 9.5px/1 ${FONT.text}`,
               letterSpacing: '0.14em',
               textTransform: 'uppercase',
-              color: C.t3,
+              color: filter === c.f ? C.ok : C.t3,
               marginBottom: 12
             }}
           >
             {c.label}
+            {/* Selection is a word plus a colour plus a border, never colour alone. */}
+            {filter === c.f && <span style={{ font: `500 8.5px/1 ${FONT.mono}`, letterSpacing: '0.08em' }}>SHOWN</span>}
           </div>
           <div
             style={{
@@ -604,8 +617,7 @@ function UserList({
   const title = filter === 'drift' ? 'Needs attention' : filter === 'premium' ? 'Premium users' : filter === 'admin' ? 'Admins' : 'All users';
 
   return (
-    <section>
-      <SectionHead title={title} meta="admin/users · D1 + RevenueCat" />
+    <Panel title={title} meta="admin/users · D1 + RevenueCat">
       {/*
         A 404 on /admin/* is usually ambiguous - limiter, role, or migration - and
         reasonText says all three because the API refuses to say which. Here we
@@ -655,7 +667,11 @@ function UserList({
           d.users?.length ? (
             <>
               <ListHead />
-              {d.users.map((u) => (
+              <Collapsible
+                rows={d.users}
+                initial={12}
+                noun="users"
+                render={(u: any) => (
                 <button
                   key={u.id}
                   type="button"
@@ -683,7 +699,8 @@ function UserList({
                     {(u.lastActive ?? '-').slice(0, 10)}
                   </span>
                 </button>
-              ))}
+                )}
+              />
             </>
           ) : (
             <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: C.t3 }}>
@@ -693,7 +710,7 @@ function UserList({
         }
       </Source>
       )}
-    </section>
+    </Panel>
   );
 }
 

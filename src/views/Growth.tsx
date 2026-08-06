@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Bar, Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
+import { Bar, Callout, Prose, SectionHead, Source, StatGrid, Panel } from '../components/primitives';
 import { useActivation, useGrowth, useRevenue } from '../lib/api';
 import { STATE } from '../lib/vocabulary';
 
@@ -76,8 +76,7 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
                 ]}
               />
 
-              <section>
-                <SectionHead title="Signups by day" meta={`users.created_at · since ${g.since.signups.slice(0, 10)}`} />
+              <Panel title="Signups by day" meta={`users.created_at · since ${g.since.signups.slice(0, 10)}`}>
                 <DayRows rows={g.days} />
                 {/*
                   Two transitions columns exist and are null for every historical
@@ -98,10 +97,9 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
                     revocations that never happened.
                   </Prose>
                 </div>
-              </section>
+              </Panel>
 
-              <section>
-                <SectionHead title="Activation" meta="rad_fm_events · play log" />
+              <Panel title="Activation" meta="rad_fm_events · play log">
                 {activation.state === 'ok' && activation.data.byDay.length ? (
                   <>
                     <ActRows rows={activation.data.byDay} />
@@ -121,12 +119,11 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
                 ) : (
                   <Empty text="Play log unreadable for this window." />
                 )}
-              </section>
+              </Panel>
 
               <Source data={revenue} what="Revenue">
                 {(r) => (
-                  <section>
-                    <SectionHead title="Subscriptions" meta={`RevenueCat · checked ${r.checkedAt?.slice(11, 16) ?? '-'}`} />
+                  <Panel title="Subscriptions" meta={`RevenueCat · checked ${r.checkedAt?.slice(11, 16) ?? '-'}`}>
                     {(r.byProduct ?? []).map((p) => (
                       <div
                         key={p.productId}
@@ -169,7 +166,7 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
                         )}
                       </Prose>
                     </div>
-                  </section>
+                  </Panel>
                 )}
               </Source>
             </>
