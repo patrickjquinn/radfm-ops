@@ -41,6 +41,46 @@ Demo mode is opt-in via the URL, banners itself on every page, and is **never** 
 live source fails. A dashboard that quietly shows fixtures when it cannot reach the real thing is
 worse than one that shows nothing.
 
+## Owner token — making /admin/* just work
+
+Half the dashboard reads `/admin/*` on the Rad.FM backend, which needs a Rad.FM
+**owner JWT**. The ops Worker holds no Rad.FM credential of its own by design, so that
+token has to come from somewhere. Two ways:
+
+**Per-browser (zero setup).** Paste a token into the "Rad.FM JWT" field at the bottom of
+the sidebar. It lives in `localStorage`, so it survives tabs and restarts — one paste per
+machine, not per tab.
+
+**Worker-held (recommended for the sole operator).** Set it once and no one pastes anything:
+
+```bash
+npx wrangler secret put OPS_BACKEND_JWT     # paste the owner JWT when prompted
+```
+
+`OPS_OWNER_EMAIL` in `wrangler.jsonc` guards it: the Worker attaches that token **only**
+for that one Access identity. Add a second person to the Access policy and they do not
+inherit it — they supply their own, so `admin_audit` still attributes actions to a person.
+A pasted token always wins over the Worker-held one, for the same reason.
+
+To mint a token (from `~/Developer/rad-fm-backend`, which has `JWT_SECRET`):
+
+```bash
+node --input-type=module -e "
+import { sign } from '@tsndr/cloudflare-worker-jwt'; import fs from 'node:fs';
+const env = Object.fromEntries(fs.readFileSync('.dev.vars','utf8').split('\n')
+  .filter(l => l.includes('=') && !l.trim().startsWith('#'))
+  .map(l => [l.slice(0,l.indexOf('=')).trim(), l.slice(l.indexOf('=')+1).trim()]));
+const exp = Math.floor(Date.now()/1000) + 30*24*3600;
+console.log(await sign({ email:'patrick.jm.quinn@gmail.com', userId:3, typ:'access', exp }, env.JWT_SECRET));
+"
+```
+
+**It expires.** Whatever lifetime you mint, the panels go back to "unavailable" when it
+lapses — the message says so rather than showing stale numbers. The permanent fix is for
+the backend to accept the Cloudflare Access JWT for `/admin/*` directly, mapping the
+verified email onto `admin_users`. That removes the second credential entirely and is the
+single highest-value item left in `docs/BACKEND-HANDOVER.md`.
+
 ## Deployed
 
 **Live at `ops.rad-fm.com` since 5 August 2026.** Version `3799d514`.

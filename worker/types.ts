@@ -8,6 +8,20 @@ export type Bindings = {
   ACCESS_AUD: string;
   /** Local dev only: a Rad.FM user JWT so /admin/* can be exercised without Access. */
   DEV_BACKEND_JWT?: string;
+  /**
+   * A Rad.FM owner JWT held by the Worker, so the single authorised operator does
+   * not have to paste their own token into every new tab.
+   *
+   * This was originally ruled out on the grounds that it "gives every Access user
+   * the rights of whoever's token it is". That objection is real, and it is why
+   * OPS_OWNER_EMAIL exists: the token is attached ONLY for the Access identity
+   * named there. Anyone else who is later added to the Access policy falls back to
+   * supplying their own JWT, so attribution survives adding a second person.
+   *
+   * Without OPS_OWNER_EMAIL set, this secret is ignored entirely.
+   */
+  OPS_BACKEND_JWT?: string;
+  OPS_OWNER_EMAIL?: string;
 };
 
 export type Variables = {

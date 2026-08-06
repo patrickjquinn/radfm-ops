@@ -199,12 +199,12 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
 function ScaleRows({ d }: { d: any }) {
   const rows: { label: string; value: number | null; note: string }[] = [
     { label: 'Registered users', value: statValue(d.users), note: d.newUsers7d != null ? `+${d.newUsers7d} in 7d` : '' },
-    { label: 'Premium', value: statValue(d.premiumUsers), note: d.premiumPct == null ? 'pct unavailable' : `${d.premiumPct}%` },
+    { label: 'Premium', value: statValue(d.premium), note: d.premiumPct == null ? 'pct unavailable' : `${d.premiumPct}%` },
     { label: 'Users with play activity, 24h', value: statValue(d.activeUsers24h), note: 'not DAU' },
     { label: 'Users with play activity, 7d', value: statValue(d.activeUsers7d), note: 'not WAU' },
     { label: 'Stations', value: statValue(d.stations), note: '100% user-gen' },
-    { label: 'Past plays', value: statValue(d.pastPlays), note: 'current state' },
-    { label: 'Liked songs', value: statValue(d.likedSongs), note: 'all have ISRC' }
+    { label: 'Past plays', value: statValue(d.plays), note: 'current state' },
+    { label: 'Liked songs', value: statValue(d.liked), note: 'all have ISRC' }
   ];
   return (
     <>
@@ -317,9 +317,12 @@ function ServiceState({
           tone: statsState?.state === 'ok' ? ('ok' as const) : ('warn' as const)
         },
         {
+          // "Unavailable" was wrong here and it mattered: that word means "a source
+          // failed", and this source was never built. Nothing is being read, so
+          // nothing failed. Saying so keeps "unavailable" meaning one thing.
           label: 'RevenueCat cron',
-          value: 'Unavailable',
-          detail: 'no cron status endpoint yet · worth adding',
+          value: 'Not instrumented',
+          detail: 'the only revocation path · needs a backend endpoint',
           tone: 'warn' as const
         },
         {

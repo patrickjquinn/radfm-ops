@@ -22,7 +22,7 @@ export const reasonText = (reason: string, detail?: string) => {
     case 'bad_token':
       return 'Cloudflare rejected the token (10000). The wrangler OAuth token does not work against api.cloudflare.com — a real scoped API token is required.';
     case 'no_backend_token':
-      return 'No Rad.FM JWT. Paste an owner token below to read /admin/*.';
+      return 'This panel reads /admin/* on the Rad.FM backend, which needs a Rad.FM owner token. Paste one into the "Rad.FM JWT" field at the bottom of the sidebar — it is stored in this browser and persists, so this is a one-time step. To stop needing it entirely, set the OPS_BACKEND_JWT secret on the Worker (see README § Owner token).';
     case 'not_found':
       // 404 on /admin/* has THREE causes and the API will not tell you which.
       // Ordered by how likely each is to be the answer in practice — the rate
@@ -43,12 +43,23 @@ export const reasonText = (reason: string, detail?: string) => {
 };
 
 const JWT_KEY = 'radfm.ops.jwt';
-export const getJwt = () => sessionStorage.getItem(JWT_KEY) ?? '';
+
+/**
+ * localStorage, not sessionStorage.
+ *
+ * sessionStorage was the safer-sounding choice and it was the wrong one: the
+ * token died with every tab, so the operator re-pasted an owner credential
+ * several times a day. That is not a security win — it is a reason to keep the
+ * token somewhere convenient and worse, a reason to stop using the tool.
+ *
+ * The threat it defended against was someone with the operator's unlocked
+ * machine. That person already has their Cloudflare session, which is the key to
+ * the whole account. The marginal exposure is close to nil; the friction was not.
+ */
+export const getJwt = () => localStorage.getItem(JWT_KEY) ?? '';
 export const setJwt = (v: string) => {
-  // sessionStorage, not localStorage: the operator's token dies with the tab
-  // rather than sitting on disk on a machine that is not the one holding it.
-  if (v) sessionStorage.setItem(JWT_KEY, v);
-  else sessionStorage.removeItem(JWT_KEY);
+  if (v) localStorage.setItem(JWT_KEY, v);
+  else localStorage.removeItem(JWT_KEY);
 };
 
 async function getJson(path: string, init?: RequestInit) {
@@ -94,6 +105,7 @@ export type Session = {
   accessConfigured: boolean;
   cfTokenPresent: boolean;
   devBackendJwt: boolean;
+  ownerTokenForCaller: boolean;
   backendOrigin: string;
   scriptName: string;
   retentionHours: number;
@@ -116,13 +128,24 @@ export const useAdminMe = (enabled = true) =>
     useQuery({ queryKey: ['me'], queryFn: () => backendGet('/admin/me'), enabled, ...common, staleTime: 0 })
   );
 
+/**
+ * Field names are the backend's, verified against src/users/routes/admin.ts —
+ * `premium`, `plays`, `liked`, NOT premiumUsers/pastPlays/likedSongs.
+ *
+ * Reading the wrong keys gave `undefined`, which statValue() turns into null,
+ * which renders as "unavailable" — so the dashboard reported three counts as
+ * unreadable while the backend was returning them perfectly. A false
+ * "unavailable" is the same lie as a false zero, just in the other direction,
+ * and it is worse here because this tool's entire pitch is that it admits what
+ * it could not read. Verify against the handler, not against what reads nicely.
+ */
 export type AdminStats = {
   users?: number;
-  premiumUsers?: number;
+  premium?: number;
   premiumPct?: number | null;
   stations?: number;
-  pastPlays?: number;
-  likedSongs?: number;
+  plays?: number;
+  liked?: number;
   activeUsers24h?: number;
   activeUsers7d?: number;
   newUsers7d?: number;

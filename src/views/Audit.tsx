@@ -44,11 +44,16 @@ export default function Audit({ ctx }: { ctx: Ctx }) {
   );
 }
 
+/**
+ * Actor was a fixed 88px, sized for "user 3". The real column is `actor_email`,
+ * so every row rendered an address on top of the action text — unreadable, and on
+ * the one screen whose job is to say who did what. Widths now match the data.
+ */
 const cols = [
-  { label: 'When', w: 112 },
-  { label: 'Actor', w: 88 },
+  { label: 'When', w: 132 },
+  { label: 'Actor', w: 210 },
   { label: 'Action', w: undefined as number | undefined },
-  { label: 'Target', w: 110, right: true }
+  { label: 'Target', w: 150, right: true }
 ];
 
 function Head() {
@@ -82,10 +87,21 @@ function Rows({ rows }: { rows: { at: string; actor: string; action: string; tar
     <>
       {rows.map((a, i) => (
         <div key={i} style={{ display: 'flex', gap: 14, padding: '11px 0', borderBottom: LINE.row, alignItems: 'baseline' }}>
-          <span style={{ width: 112, flex: 'none', font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.4)' }}>
+          <span style={{ width: 132, flex: 'none', font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.4)' }}>
             {a.at}
           </span>
-          <span style={{ width: 88, flex: 'none', font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.6)' }}>
+          <span
+            title={a.actor}
+            style={{
+              width: 210,
+              flex: 'none',
+              font: `400 11.5px/1.2 ${FONT.mono}`,
+              color: 'rgba(255,255,255,0.6)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}
+          >
             {a.actor}
           </span>
           <span
@@ -100,7 +116,7 @@ function Rows({ rows }: { rows: { at: string; actor: string; action: string; tar
           </span>
           <span
             style={{
-              width: 110,
+              width: 150,
               flex: 'none',
               textAlign: 'right',
               font: `400 11.5px/1.2 ${FONT.mono}`,

@@ -32,6 +32,16 @@ app.get('/api/session', (c) =>
      * role, and every role-gated control stays dark for the wrong reason.
      */
     devBackendJwt: isUnconfigured(c.env) ? undefined : Boolean(c.env.DEV_BACKEND_JWT),
+    /**
+     * Whether the Worker will attach an owner token for THIS caller. Reported per
+     * request rather than as a global flag, so a second operator added to the
+     * Access policy correctly sees "you need your own token" instead of a UI that
+     * claims to be configured and then 401s.
+     */
+    ownerTokenForCaller:
+      Boolean(c.env.OPS_BACKEND_JWT) &&
+      Boolean(c.env.OPS_OWNER_EMAIL) &&
+      c.get('email')?.trim().toLowerCase() === c.env.OPS_OWNER_EMAIL?.trim().toLowerCase(),
     backendOrigin: c.env.BACKEND_ORIGIN,
     scriptName: c.env.BACKEND_SCRIPT_NAME,
     /** Observability retains 3 days; the UI surfaces this rather than truncating silently. */

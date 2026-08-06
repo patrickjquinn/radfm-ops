@@ -87,7 +87,9 @@ export default function App() {
   // The Worker's DEV_BACKEND_JWT counts as having a token: gating this purely on a
   // pasted one means local dev can never resolve a role, and every role-gated
   // control stays disabled for a reason that is not the real one.
-  const hasBackendToken = Boolean(jwt) || (session.state === 'ok' && session.data.devBackendJwt);
+  const workerHoldsToken =
+    session.state === 'ok' && (session.data.ownerTokenForCaller || session.data.devBackendJwt);
+  const hasBackendToken = Boolean(jwt) || workerHoldsToken;
   const me = useAdminMe(!demo && hasBackendToken);
 
   // Relative age only. If this interval never runs the label stays at its
@@ -293,7 +295,7 @@ export default function App() {
             so the dashboard carries the operator's own Rad.FM JWT. It lives in
             sessionStorage and dies with the tab.
           */}
-          {!demo && me.state !== 'ok' && !(session.state === 'ok' && session.data.devBackendJwt) && (
+          {!demo && me.state !== 'ok' && !workerHoldsToken && (
             <form
               onSubmit={(e) => {
                 e.preventDefault();

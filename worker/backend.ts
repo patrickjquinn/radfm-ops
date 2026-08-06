@@ -53,10 +53,23 @@ app.all('/*', async (c) => {
     return c.json({ error: 'read_only', detail: 'Mutations are Phase 4 — reads must earn trust first' }, 405);
   }
 
-  // The operator's own Rad.FM JWT. There is no separate admin login: "reuse the
-  // existing admin" resolved to reusing the existing user auth, so the dashboard
-  // carries the operator's token rather than holding a credential of its own.
-  const jwt = c.req.header('X-Rad-Jwt') ?? c.env.DEV_BACKEND_JWT ?? '';
+  // The operator's own Rad.FM JWT, in order of preference:
+  //
+  //   1. A token pasted in this browser — always wins, so a second operator is
+  //      always acting as themselves.
+  //   2. The Worker-held owner token, but ONLY for the one Access identity named
+  //      in OPS_OWNER_EMAIL. This exists because requiring the sole authorised
+  //      operator to paste a second credential after already authenticating
+  //      through Access is friction with no security return — the Access policy
+  //      has already established who they are. The email check is what keeps the
+  //      original objection answered: add a second person to the Access policy and
+  //      they do NOT inherit this token, they supply their own.
+  //   3. Local dev.
+  const ownerEmail = c.env.OPS_OWNER_EMAIL?.trim().toLowerCase();
+  const caller = c.get('email')?.trim().toLowerCase();
+  const ownerToken = ownerEmail && caller && caller === ownerEmail ? c.env.OPS_BACKEND_JWT : undefined;
+
+  const jwt = c.req.header('X-Rad-Jwt') || ownerToken || c.env.DEV_BACKEND_JWT || '';
   if (!jwt) return c.json({ error: 'no_backend_token' }, 401);
 
   const path = new URL(c.req.url).pathname.replace(/^\/api\/backend/, '');

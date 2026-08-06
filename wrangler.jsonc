@@ -25,6 +25,11 @@
     "CF_ACCOUNT_ID": "49b85a65aa7b9cd658945400b972d2b7",
     "BACKEND_ORIGIN": "https://api.rad-fm.com",
     "BACKEND_SCRIPT_NAME": "rad-fm-backend",
+
+    // The one Access identity the Worker will attach OPS_BACKEND_JWT for. Anyone
+    // else added to the Access policy supplies their own token, so admin_audit
+    // keeps attributing actions to a person rather than to "the dashboard".
+    "OPS_OWNER_EMAIL": "patrick.jm.quinn@gmail.com",
     // Access application "Rad.FM Ops", created 5 Aug 2026. Policy "Owner only":
     // Emails == patrick.jm.quinn@gmail.com. Both values are identifiers, not
     // secrets, so they belong in version control where a change is reviewable.
@@ -32,7 +37,11 @@
     // Setting a real AUD here also closes the dev bypass in worker/access.ts —
     // that is deliberate, and it is why these two must never be reverted to the
     // placeholder on a deployed Worker.
-    "ACCESS_TEAM_DOMAIN": "long-wildflower-f4fb.cloudflareaccess.com",
+    // Renamed from the auto-generated long-wildflower-f4fb on 5 Aug 2026. The old
+    // domain 404s immediately once the team is renamed, and this value is what the
+    // Worker fetches the JWKS from — so a rename and a redeploy are one operation,
+    // not two. Between them, every /api route 401s.
+    "ACCESS_TEAM_DOMAIN": "radfm.cloudflareaccess.com",
     "ACCESS_AUD": "b01e1140660d0a36b16f6e988774ac57e1c456bac1d36cb79108cee28450fe88"
   }
 

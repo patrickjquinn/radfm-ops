@@ -182,10 +182,17 @@ function EntitlementCard({
   header
 }: {
   ctx: Ctx;
-  data: { drift: boolean; local: { k: string; v: string; tone: Tone }[]; rc: { k: string; v: string; tone: Tone }[] };
+  data: {
+    drift: boolean;
+    crossChecked?: boolean;
+    local: { k: string; v: string; tone: Tone }[];
+    rc: { k: string; v: string; tone: Tone }[];
+  };
   header: { title: string; sub: string };
 }) {
   const { drift } = data;
+  // Fixtures predate the flag and do compare both sides, so default to true.
+  const crossChecked = data.crossChecked ?? true;
   return (
     <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, overflow: 'hidden' }}>
       <div
@@ -213,12 +220,18 @@ function EntitlementCard({
             font: `600 10px/1.4 ${FONT.text}`,
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
-            background: drift ? 'rgba(255,98,89,0.14)' : 'rgba(63,179,166,0.12)',
-            border: `1px solid ${drift ? 'rgba(255,98,89,0.3)' : 'rgba(63,179,166,0.28)'}`,
-            color: drift ? C.bad : C.ok
+            background: !crossChecked
+              ? 'rgba(224,160,48,0.14)'
+              : drift
+                ? 'rgba(255,98,89,0.14)'
+                : 'rgba(63,179,166,0.12)',
+            border: `1px solid ${
+              !crossChecked ? 'rgba(224,160,48,0.3)' : drift ? 'rgba(255,98,89,0.3)' : 'rgba(63,179,166,0.28)'
+            }`,
+            color: !crossChecked ? C.warnText : drift ? C.bad : C.ok
           }}
         >
-          {drift ? 'Drift detected' : 'In agreement'}
+          {!crossChecked ? 'Not cross-checked' : drift ? 'Drift detected' : 'In agreement'}
         </span>
       </div>
 
@@ -248,9 +261,11 @@ function EntitlementCard({
           color: drift ? C.t2 : 'rgba(255,255,255,0.5)'
         }}
       >
-        {drift
-          ? 'Local says premium, RevenueCat says expired, and the cached row is stale against a 300s TTL. This is the incident that silently stripped paid segments from live subscribers — treat the remote answer as truth.'
-          : 'premium_users is a cache of RevenueCat, not a source of truth. Both are shown because agreement is the only way to know the cache is sound.'}
+        {!crossChecked
+          ? 'Only the local row was read. /admin/users/:id/entitlement does not return a RevenueCat answer, so there is nothing to compare it against — this panel cannot currently tell you whether the cache is stale, which is the single thing it exists to detect. The backend needs to add the live lookup.'
+          : drift
+            ? 'Local says premium, RevenueCat says expired, and the cached row is stale against a 300s TTL. This is the incident that silently stripped paid segments from live subscribers — treat the remote answer as truth.'
+            : 'premium_users is a cache of RevenueCat, not a source of truth. Both are shown because agreement is the only way to know the cache is sound.'}
       </div>
 
       <div
@@ -350,12 +365,14 @@ function headerOf(d: any, id: string) {
  * claiming the user has no entitlement.
  */
 function shape(d: any) {
-  const premium = d?.premium ?? null;
+  // The handler returns `local: { isPremium, grantedAt }`, not a bare `premium`.
+  const premium = d?.local?.isPremium ?? null;
   const meta = d?.meta ?? null;
   const rc = d?.revenueCat ?? d?.rc ?? null;
 
   const local: { k: string; v: string; tone: Tone }[] = [
     { k: 'premium', v: premium ? 'true' : 'false', tone: premium ? 'ok' : 'dim' },
+    { k: 'granted', v: d?.local?.grantedAt ?? '—', tone: 'dim' },
     { k: 'since', v: meta?.premium_since ?? (meta === null ? 'unavailable' : '—'), tone: meta === null ? 'warn' : 'dim' },
     { k: 'last_source', v: meta?.last_source ?? (meta === null ? 'unavailable' : '—'), tone: meta === null ? 'warn' : 'dim' },
     { k: 'app_id', v: meta?.app_id ?? '—', tone: 'dim' }
@@ -377,7 +394,10 @@ function shape(d: any) {
         { k: 'checked', v: 'not returned by /admin', tone: 'warn' }
       ];
 
-  // Drift is only claimed when both sides actually answered.
-  const drift = Boolean(rc) && Boolean(premium) !== Boolean(rc.active);
-  return { drift, local, rc: rcRows };
+  // Drift — and agreement — are only claimed when both sides actually answered.
+  // Reporting "in agreement" off a single source is the same mistake as trusting
+  // premium_users alone, which is the incident this panel was built for.
+  const crossChecked = Boolean(rc);
+  const drift = crossChecked && Boolean(premium) !== Boolean(rc.active);
+  return { drift, crossChecked, local, rc: rcRows };
 }
