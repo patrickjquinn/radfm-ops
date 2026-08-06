@@ -218,7 +218,7 @@ export const useAeDj = (hours: number) =>
   );
 
 export const useAeRecs = (hours: number) =>
-  lift<{ rows: any[] }>(
+  lift<{ rows: any[]; zeroTrackRequests?: number; causes?: { cause: string; n: number }[] }>(
     useQuery({ queryKey: ['ae-recs', hours], queryFn: () => cfGet(`/ae/recs?hours=${hours}`), ...common })
   );
 
@@ -287,7 +287,36 @@ export const useStations = (q: string, enabled: boolean) =>
     })
   );
 
-export type SetlistFill = { fillRate: number; sampled: number; filled: number; windowHours: number };
+export type SetlistFill = {
+  fillRate: number;
+  sampled: number;
+  filled: number;
+  windowHours: number;
+  cities?: number;
+  truncated?: boolean;
+  source?: string;
+};
+
+export type CronStatus = {
+  lastRunAt: string | null;
+  outcome?: string;
+  rowsReconciled?: number;
+  durationMs?: number;
+  schedule?: string;
+};
+
+/**
+ * RevenueCat reconcile status.
+ *
+ * `lastRunAt: null` means NEVER OBSERVED, not healthy — the backend is explicit
+ * about that and the distinction matters here more than most: this cron is the
+ * only server-initiated revocation path, and it has been silently misconfigured
+ * before. A card that renders null as "fine" would reproduce that exactly.
+ */
+export const useCron = (enabled: boolean) =>
+  lift<CronStatus>(
+    useQuery({ queryKey: ['cron'], queryFn: () => backendGet('/admin/metrics/cron'), enabled, ...common })
+  );
 
 /**
  * The metric that would have caught the 1,094-warning bug on day one. It sat

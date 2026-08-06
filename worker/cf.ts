@@ -390,7 +390,53 @@ app.get('/ae/recs', async (c) => {
      GROUP BY source ORDER BY n DESC`
   );
   if (out.ok === false) return c.json(out);
-  return c.json({ ok: true, rows: out.data?.data ?? [] });
+
+  /**
+   * Two things `degraded` cannot tell you, both of which the backend added on
+   * 6 Aug and both of which matter more than the degraded rate itself:
+   *
+   *   1. Requests that returned ZERO tracks. Degraded is the seatbelt; zero is the
+   *      crash. Zero-track requests are not flagged degraded, so three of them sat
+   *      invisible under a "19 degraded" headline. `double1` is trackCount.
+   *   2. WHY the pool collapsed. `blob5` (poolSource) used to be the bare string
+   *      `error` for everything. It now separates `error:deadline` (upstreams slow,
+   *      expected ~2%, NOT a code fault) from `error:validation` (a caller bug —
+   *      the listener gets nothing). Those demand opposite responses.
+   *
+   * Rows written before the backend's 4fa6f58e still read bare `error`; they are
+   * reported as `legacy` rather than bucketed with `error:other`, because "cause
+   * unknown" and "cause was other" are different claims.
+   */
+  const [zero, causes] = await Promise.all([
+    ae(
+      c.env,
+      `SELECT count() AS n FROM rad_fm_events
+       WHERE blob1 = 'recs' AND double1 = 0 AND timestamp > now() - INTERVAL '${hours}' HOUR`
+    ),
+    ae(
+      c.env,
+      // ONLY the error causes. poolSource also carries the healthy pipeline names
+      // (`apple-catalog+reccobeats` and friends), and including them put the
+      // successful path at 79.7% of a panel headed "why the pool collapsed" —
+      // a table that answers a different question than its title asks.
+      `SELECT blob5 AS cause, count() AS n FROM rad_fm_events
+       WHERE blob1 = 'recs' AND blob5 LIKE 'error%' AND timestamp > now() - INTERVAL '${hours}' HOUR
+       GROUP BY cause ORDER BY n DESC`
+    )
+  ]);
+
+  return c.json({
+    ok: true,
+    rows: out.data?.data ?? [],
+    zeroTrackRequests: zero.ok === false ? undefined : Number(zero.data?.data?.[0]?.n ?? 0),
+    causes:
+      causes.ok === false
+        ? undefined
+        : (causes.data?.data ?? []).map((r: any) => ({
+            cause: String(r.cause) === 'error' ? 'legacy' : String(r.cause),
+            n: Number(r.n ?? 0)
+          }))
+  });
 });
 
 /**

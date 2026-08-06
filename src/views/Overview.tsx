@@ -2,7 +2,7 @@ import type { Ctx } from '../App';
 import { BG, C, FONT, LINE, dot, num } from '../theme';
 import { Icon } from '../icons';
 import { KeyRow, SectionHead, Source } from '../components/primitives';
-import { statValue, useAdminStats, useAeProbe, useSetlistFill, useVersions } from '../lib/api';
+import { statValue, useAdminStats, useAeProbe, useCron, useSetlistFill, useVersions } from '../lib/api';
 import { useHealth } from '../lib/health';
 import * as fx from '../lib/fixtures';
 
@@ -12,6 +12,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
   const probe = useAeProbe();
   const versions = useVersions();
   const setlists = useSetlistFill(Math.min(ctx.hours, 72), !demo);
+  const cron = useCron(!demo);
 
   // Verdict and signals come from the same derivation the nav badges use, so the
   // number on the badge, the number in the verdict and the rows below always
@@ -140,6 +141,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
         statsState={demo ? null : stats}
         probeOk={probe.state === 'ok' && probe.data.rows.length > 0}
         setlists={setlists}
+        cron={cron}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,300px),1fr))', gap: 20 }}>
@@ -277,12 +279,14 @@ function ServiceState({
   ctx,
   statsState,
   probeOk,
-  setlists
+  setlists,
+  cron
 }: {
   ctx: Ctx;
   statsState: ReturnType<typeof useAdminStats> | null;
   probeOk: boolean;
   setlists: ReturnType<typeof useSetlistFill>;
+  cron: ReturnType<typeof useCron>;
 }) {
   const demo = ctx.demo;
   const missing =
@@ -316,15 +320,7 @@ function ServiceState({
               : 'every /admin/* route 404s until it runs',
           tone: statsState?.state === 'ok' ? ('ok' as const) : ('warn' as const)
         },
-        {
-          // "Unavailable" was wrong here and it mattered: that word means "a source
-          // failed", and this source was never built. Nothing is being read, so
-          // nothing failed. Saying so keeps "unavailable" meaning one thing.
-          label: 'RevenueCat cron',
-          value: 'Not instrumented',
-          detail: 'the only revocation path · needs a backend endpoint',
-          tone: 'warn' as const
-        },
+        cronCard(cron),
         {
           label: 'Data quality',
           value: missing === undefined ? 'Unavailable' : `${missing} rows`,
@@ -337,22 +333,7 @@ function ServiceState({
           detail: probeOk ? 'probe returned rows' : 'never queried · needs scoped token',
           tone: probeOk ? ('ok' as const) : ('warn' as const)
         },
-        {
-          // 75% baseline, measured on a live 100-event London listing. Below 70%
-          // is the shape of the bug that disabled setlists for a third of gigs.
-          label: 'Setlist fill rate',
-          value: setlists.state === 'ok' ? `${Math.round(setlists.data.fillRate * 100)}%` : 'Unavailable',
-          detail:
-            setlists.state === 'ok'
-              ? `${setlists.data.filled}/${setlists.data.sampled} gigs enriched`
-              : 'needs /admin/metrics/setlists',
-          tone:
-            setlists.state !== 'ok'
-              ? ('warn' as const)
-              : setlists.data.fillRate < 0.7
-                ? ('bad' as const)
-                : ('ok' as const)
-        }
+        setlistCard(setlists)
       ];
 
   return (
@@ -400,6 +381,76 @@ function ServiceState({
       ))}
     </div>
   );
+}
+
+/**
+ * The cron card.
+ *
+ * `lastRunAt: null` is NOT healthy — the backend documents it as "never observed",
+ * and this cron is the only server-initiated revocation path. It has been silently
+ * misconfigured before, so rendering null as anything reassuring would recreate
+ * exactly the failure this card exists to catch.
+ */
+function cronCard(cron: ReturnType<typeof useCron>) {
+  if (cron.state !== 'ok')
+    return { label: 'RevenueCat cron', value: 'Unavailable', detail: 'could not read status', tone: 'warn' as const };
+
+  const { lastRunAt, outcome, rowsReconciled, schedule } = cron.data;
+  const cadence = schedule ?? '0 */6 * * *';
+  if (!lastRunAt)
+    return {
+      label: 'RevenueCat cron',
+      value: 'Never observed',
+      detail: `${cadence} \u00b7 the only revocation path`,
+      tone: 'bad' as const
+    };
+
+  const ageH = (Date.now() - new Date(`${lastRunAt.replace(' ', 'T')}Z`).getTime()) / 3_600_000;
+  // Six-hourly. Two missed runs is a fault, not a blip.
+  const overdue = !Number.isFinite(ageH) || ageH > 12;
+  const failed = outcome !== undefined && outcome !== 'ok';
+  return {
+    label: 'RevenueCat cron',
+    value: failed ? `Last run ${outcome}` : overdue ? 'Overdue' : `Ran ${Math.max(0, Math.round(ageH))}h ago`,
+    detail: `${cadence} \u00b7 ${rowsReconciled ?? '\u2014'} rows reconciled`,
+    tone: failed || overdue ? ('bad' as const) : ('ok' as const)
+  };
+}
+
+/**
+ * The setlist card.
+ *
+ * A 0/0 sample is NOT a 0% fill rate. It rendered as "0%" in red — a false zero
+ * dressed as an outage, which is the same lie as a false "unavailable" and exactly
+ * what this dashboard is meant to refuse to do. No gigs in the window means there
+ * is nothing to report, so it says that.
+ */
+function setlistCard(setlists: ReturnType<typeof useSetlistFill>) {
+  if (setlists.state !== 'ok')
+    return {
+      label: 'Setlist fill rate',
+      value: 'Unavailable',
+      detail: 'could not read /admin/metrics/setlists',
+      tone: 'warn' as const
+    };
+
+  const { fillRate, filled, sampled } = setlists.data;
+  if (!sampled)
+    return {
+      label: 'Setlist fill rate',
+      value: 'No sample',
+      detail: 'no gigs in this window \u2014 not a 0% fill rate',
+      tone: 'dim' as const
+    };
+
+  // 75% baseline, measured on a live 100-event London listing. Below 70% is the
+  // shape of the bug that disabled setlists for a third of gigs.
+  return {
+    label: 'Setlist fill rate',
+    value: `${Math.round(fillRate * 100)}%`,
+    detail: `${filled}/${sampled} gigs enriched`,
+    tone: fillRate < 0.7 ? ('bad' as const) : ('ok' as const)
+  };
 }
 
 function relAge(iso?: string) {

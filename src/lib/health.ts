@@ -42,6 +42,22 @@ const DJ_NONOK_WARN = 25;
 const RECS_DEGRADED_WARN = 10;
 const MIN_SAMPLE = 30;
 
+/**
+ * The DJ pass rate has a DAYPART CYCLE, measured by the backend on 6 Aug:
+ *
+ *     overnight  ~78% ok      daytime  ~92% ok
+ *
+ * Consistently, before and after any deploy. Against an 86% blended baseline a
+ * short overnight window sits near 22% non-ok and would breach the 25% line most
+ * nights — the dashboard would cry wolf every night and be ignored by the second
+ * week. They nearly reported an overnight figure as a regression themselves before
+ * checking like-for-like.
+ *
+ * So the DJ signal requires a window of at least 24h, which spans both dayparts
+ * and makes the comparison honest. Below that, no claim is made either way.
+ */
+const DJ_MIN_WINDOW_HOURS = 24;
+
 export type Signal = {
   title: string;
   evidence: string;
@@ -150,9 +166,10 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   const warnTotal = warn.state === 'ok' ? (warn.data.groups ?? []).reduce((a, b) => a + b.count, 0) : null;
   const djPct = dj.state === 'ok' ? nonOkPct(dj.data.rows) : null;
   const recsPct = recs.state === 'ok' ? degradedPct(recs.data.rows) : null;
+  const recsZero = recs.state === 'ok' ? (recs.data.zeroTrackRequests ?? null) : null;
   const missingPlayedAt = stats.state === 'ok' ? stats.data.dataQuality?.pastPlaysMissingPlayedAt : undefined;
 
-  if (djPct != null && djPct >= DJ_NONOK_WARN)
+  if (djPct != null && hours >= DJ_MIN_WINDOW_HOURS && djPct >= DJ_NONOK_WARN)
     signals.unshift({
       title: 'DJ degeneracy rising',
       evidence: `Non-ok share is ${Math.round(djPct)}% against a ~14% baseline. The guard is rejecting more takes, and regressions here are otherwise only detectable by listening to the radio.`,
@@ -160,6 +177,21 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       source: 'Analytics Engine',
       sev: 'warn',
       go: 'rad'
+    });
+
+  // Degraded is the seatbelt; zero tracks is the crash. A request that returns no
+  // tracks at all is a dead player, and those are NOT flagged degraded — three of
+  // them sat underneath a "19 degraded" headline unnoticed. Ranked above the
+  // fallback-rate signal because it is strictly worse.
+  if (recsZero != null && recsZero > 0)
+    signals.unshift({
+      title: `${recsZero} request${recsZero === 1 ? '' : 's'} returned zero tracks`,
+      evidence:
+        'A dead player, not a degraded one. These do not show up as "degraded" — the fallback did not rescue them, it returned nothing. Check poolSource for the cause.',
+      metric: String(recsZero),
+      source: 'Analytics Engine',
+      sev: 'bad',
+      go: 'recs'
     });
 
   if (recsPct != null && recsPct >= RECS_DEGRADED_WARN)
@@ -215,7 +247,22 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     };
   if (fourxxTotal) badges.traffic = { text: compact(fourxxTotal), kind: fourxxTotal > 1000 ? 'warn' : 'plain' };
   if (warnTotal) badges.logs = { text: compact(warnTotal), kind: warnTotal > 500 ? 'warn' : 'plain' };
-  if (djPct != null && djPct >= DJ_NONOK_WARN) badges.rad = { text: `${Math.round(djPct)}%`, kind: 'warn' };
+  if (djPct != null && hours >= DJ_MIN_WINDOW_HOURS && djPct >= DJ_NONOK_WARN) badges.rad = { text: `${Math.round(djPct)}%`, kind: 'warn' };
+  // Degraded is the seatbelt; zero tracks is the crash. A request that returns no
+  // tracks at all is a dead player, and those are NOT flagged degraded — three of
+  // them sat underneath a "19 degraded" headline unnoticed. Ranked above the
+  // fallback-rate signal because it is strictly worse.
+  if (recsZero != null && recsZero > 0)
+    signals.unshift({
+      title: `${recsZero} request${recsZero === 1 ? '' : 's'} returned zero tracks`,
+      evidence:
+        'A dead player, not a degraded one. These do not show up as "degraded" — the fallback did not rescue them, it returned nothing. Check poolSource for the cause.',
+      metric: String(recsZero),
+      source: 'Analytics Engine',
+      sev: 'bad',
+      go: 'recs'
+    });
+
   if (recsPct != null && recsPct >= RECS_DEGRADED_WARN) badges.recs = { text: `${Math.round(recsPct)}%`, kind: 'warn' };
 
   const bad = signals.filter((s) => s.sev === 'bad').length;

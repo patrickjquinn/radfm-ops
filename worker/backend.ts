@@ -37,6 +37,7 @@ const ALLOWED_GET = [
   /^\/admin\/users\/lookup$/,
   /^\/admin\/stations$/,
   /^\/admin\/metrics\/setlists$/,
+  /^\/admin\/metrics\/cron$/,
   /^\/admin\/config$/
 ];
 
@@ -71,7 +72,14 @@ app.all('/*', async (c) => {
   const ownerToken = ownerEmail && caller && caller === ownerEmail ? c.env.OPS_BACKEND_JWT : undefined;
 
   const jwt = c.req.header('X-Rad-Jwt') || ownerToken || c.env.DEV_BACKEND_JWT || '';
-  if (!jwt) return c.json({ error: 'no_backend_token' }, 401);
+
+  // A missing bearer is only fatal if there is ALSO no Access assertion to forward.
+  //
+  // This used to 401 unconditionally, which would have made deleting OPS_BACKEND_JWT
+  // break the dashboard even though the backend now derives identity from the
+  // forwarded assertion. The bearer is the legacy path; Access is the replacement,
+  // and once it carries identity the bearer is dead weight with an expiry date.
+  if (!jwt && !accessJwt) return c.json({ error: 'no_backend_token' }, 401);
 
   const path = new URL(c.req.url).pathname.replace(/^\/api\/backend/, '');
   const allowed = method === 'GET' ? ALLOWED_GET : ALLOWED_PUT;
@@ -83,7 +91,7 @@ app.all('/*', async (c) => {
   const res = await fetch(target, {
     method,
     headers: {
-      Authorization: `Bearer ${jwt}`,
+      ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
       Accept: 'application/json',
       // Access Linked App Token. Forwarding the verified assertion lets an Access
       // application in front of api.rad-fm.com/admin/* validate that this request
@@ -97,6 +105,19 @@ app.all('/*', async (c) => {
     },
     body: method === 'PUT' ? await c.req.text() : undefined
   });
+
+  // Diagnostics on failure only. A 404 from /admin/* is deliberately ambiguous
+  // (limiter, role, or migration), so when one happens it is worth recording what
+  // this side actually sent — otherwise the ambiguity becomes untraceable across
+  // two codebases, which is precisely what happened when the owner token was
+  // removed and every /admin/* route began 404ing.
+  if (!res.ok) {
+    console.error(
+      `[backend] ${method} ${path} -> ${res.status} | bearer=${jwt ? 'yes' : 'no'} | cf-access-token=${
+        accessJwt ? `yes(${accessJwt.length} chars)` : 'NO'
+      } | caller=${caller ?? 'unknown'}`
+    );
+  }
 
   // Status is passed through untouched, 404 included. Translating it to
   // something friendlier here would destroy the distinction the backend is
