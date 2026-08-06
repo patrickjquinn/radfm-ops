@@ -295,8 +295,11 @@ export default function App() {
           {/*
             Not in the prototype, and needed: there is no separate admin login —
             "reuse the existing admin" resolved to reusing the existing user auth,
-            so the dashboard carries the operator's own Rad.FM JWT. It lives in
-            sessionStorage and dies with the tab.
+            so the dashboard carries the operator's own Rad.FM JWT. It persists in
+            localStorage; see lib/api.ts for why that beat sessionStorage.
+
+            It only appears when the Worker cannot reach /admin/* on the caller's
+            behalf, so in the normal deployed case nobody ever sees it.
           */}
           {!demo && me.state !== 'ok' && !workerHoldsToken && (
             <form
