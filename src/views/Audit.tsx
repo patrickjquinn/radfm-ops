@@ -25,14 +25,20 @@ export default function Audit({ ctx }: { ctx: Ctx }) {
           <Source data={audit} what="Audit trail">
             {(d) => {
               const rows = normalise(d);
-              // No mutation route uses adminAuth('operator') or ('owner') yet, so
-              // an empty table is the expected state - not a failure to read it.
+              /*
+                This used to say "expected: no route performs a mutation yet". That
+                stopped being true the moment config writes shipped - the table now
+                carries real config.write rows and real cron runs. An empty result
+                is no longer the expected state, so it must not be described as one:
+                reassuring copy on an append-only audit table is the last place a
+                stale claim belongs.
+              */
               if (!rows.length)
                 return (
-                  <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)', maxWidth: '70ch' }}>
-                    No admin actions recorded. Expected: no route performs a mutation yet, so nothing has had cause to
-                    write here. This view exists before the actions do, deliberately - the first mutation must write its
-                    row in the same handler.
+                  <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: C.warnText, maxWidth: '70ch' }}>
+                    No admin actions in this window. Config writes and the reconcile cron both write here, so an empty
+                    table means either nothing has happened recently or the rows are not being written - and this view
+                    cannot tell those apart. Check the cron card on Overview before concluding it is quiet.
                   </div>
                 );
               return <Rows rows={rows} />;
