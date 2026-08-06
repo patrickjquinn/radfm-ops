@@ -1,7 +1,7 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num } from '../theme';
 import { Callout, Prose, SectionHead, Source, StatGrid } from '../components/primitives';
-import { useCost, type CostRow } from '../lib/api';
+import { useArtwork, useCost, type CostRow } from '../lib/api';
 
 /**
  * What this system costs to run, and specifically what the AI costs.
@@ -19,6 +19,7 @@ import { useCost, type CostRow } from '../lib/api';
 export default function Cost({ ctx }: { ctx: Ctx }) {
   const hours = Math.max(ctx.hours, 24);
   const cost = useCost(hours, !ctx.demo);
+  const artwork = useArtwork(Math.max(Math.round(hours / 24), 1), !ctx.demo);
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
@@ -78,6 +79,58 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
                 "spend" understates by an unknown amount - and image generation is
                 expensive enough to be the largest line while reading as free.
               */}
+              {/*
+                The image spend the gateway cannot see, now countable.
+                
+                My handover called this "plausibly the largest line". It is not -
+                the backend measured it at roughly a quarter of the text spend,
+                because quality:'low' was already chosen at the call site. I had
+                inferred a price from the model name without checking the options,
+                and stated it too strongly. The scaling concern was right; the
+                magnitude was not.
+              */}
+              {artwork.state === 'ok' && (
+                <div
+                  style={{
+                    border: LINE.edge,
+                    background: 'rgba(255,255,255,0.02)',
+                    borderRadius: 8,
+                    padding: '15px 17px',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 14,
+                    alignItems: 'baseline'
+                  }}
+                >
+                  <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+                    <div
+                      style={{
+                        font: `600 9.5px/1 ${FONT.text}`,
+                        letterSpacing: '0.14em',
+                        textTransform: 'uppercase',
+                        color: C.t3,
+                        marginBottom: 8
+                      }}
+                    >
+                      Station artwork · measured by the backend
+                    </div>
+                    <div style={{ font: `400 12px/1.6 ${FONT.text}`, color: C.t2, maxWidth: '72ch' }}>
+                      {artwork.data.images === 0
+                        ? 'No generations recorded in this window. The event was added today, so an empty result here means not yet observed - it is not evidence that nothing was generated.'
+                        : 'Counted from the backend\u2019s own estimate rather than the gateway, which prices per token and reports images as $0. One image per station created, so this scales with signups.'}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ ...num, font: `500 19px/1 ${FONT.mono}`, color: artwork.data.images ? C.t1 : C.t3 }}>
+                      {artwork.data.images === 0 ? 'none yet' : money(artwork.data.cost)}
+                    </div>
+                    <div style={{ font: `400 10px/1.5 ${FONT.text}`, color: C.t3, marginTop: 5 }}>
+                      {artwork.data.images.toLocaleString()} image{artwork.data.images === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {unpriced.length > 0 && (
                 <div
                   style={{

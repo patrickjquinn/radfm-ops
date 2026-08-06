@@ -477,6 +477,78 @@ app.get('/dataset', async (c) => {
 });
 
 /**
+ * Activation: when each listener played for the FIRST time.
+ *
+ * The backend deliberately omitted `firstPlays` from /admin/metrics/growth and
+ * said why: `past_plays` is delete-then-inserted on replay, so MIN(created_at)
+ * per user is the oldest SURVIVING row and moves every time someone replays a
+ * track. It would have rendered as a clean activation curve and been fiction.
+ * Refusing to ship it was the right call, and they pointed here instead.
+ *
+ * The play log can answer it, because it is append-only. Aggregation is done in
+ * the Worker rather than in SQL: Analytics Engine has no nested aggregates, so
+ * "min per user, then bucket by day" cannot be one query. At this cardinality
+ * that costs nothing.
+ */
+app.get('/ae/activation', async (c) => {
+  const gate = requireToken(c.env);
+  if (gate) return c.json(gate);
+  const days = Math.min(Math.max(Number(c.req.query('days') ?? 30), 1), 90);
+
+  const out = await ae(
+    c.env,
+    `SELECT index1 AS listener, min(timestamp) AS firstPlay
+     FROM rad_fm_events WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '${days}' DAY
+     GROUP BY listener`
+  );
+  if (out.ok === false) return c.json(out);
+  return c.json({ ok: true, days, byDay: bucketFirstPlays(out.data?.data ?? []) });
+});
+
+/**
+ * One row per day with the number of listeners whose first play landed on it.
+ *
+ * "First" is only first WITHIN THE WINDOW. A listener active before it looks
+ * like a new activation the moment the window slides past their real first play,
+ * so the caller has to state the window - which the view does.
+ */
+export function bucketFirstPlays(rows: any[]): { day: string; activated: number }[] {
+  const byDay = new Map<string, number>();
+  for (const r of rows) {
+    const day = String(r?.firstPlay ?? '').slice(0, 10);
+    if (!day) continue;
+    byDay.set(day, (byDay.get(day) ?? 0) + 1);
+  }
+  return [...byDay.entries()].map(([day, activated]) => ({ day, activated })).sort((a, b) => a.day.localeCompare(b.day));
+}
+
+/**
+ * Station artwork generations, with the cost the backend estimates per image.
+ *
+ * AI Gateway prices by token, so image models report $0 however many calls are
+ * made - not free, NOT COUNTED. The backend now writes this event with its own
+ * estimate so the spend is countable here rather than waiting for the gateway.
+ */
+app.get('/ae/artwork', async (c) => {
+  const gate = requireToken(c.env);
+  if (gate) return c.json(gate);
+  const days = Math.min(Math.max(Number(c.req.query('days') ?? 30), 1), 90);
+  const out = await ae(
+    c.env,
+    `SELECT count() AS images, sum(double1) AS cost
+     FROM rad_fm_events WHERE blob1 = 'artwork' AND timestamp > now() - INTERVAL '${days}' DAY`
+  );
+  if (out.ok === false) return c.json(out);
+  const row = out.data?.data?.[0] ?? null;
+  return c.json({
+    ok: true,
+    days,
+    images: Number(row?.images ?? 0),
+    cost: Number(row?.cost ?? 0)
+  });
+});
+
+/**
  * Published per-token rates for the models this system actually calls.
  *
  * TRANSCRIBED, not read. Same status as the scoring weights: a rate here can

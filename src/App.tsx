@@ -13,6 +13,7 @@ import Rad from './views/Rad';
 import Recs from './views/Recs';
 import Listening from './views/Listening';
 import Cost from './views/Cost';
+import Growth from './views/Growth';
 import Users from './views/Users';
 import Stations from './views/Stations';
 import Config from './views/Config';
@@ -23,6 +24,7 @@ export type ViewId =
   | 'traffic'
   | 'logs'
   | 'listening'
+  | 'growth'
   | 'cost'
   | 'rad'
   | 'recs'
@@ -42,6 +44,7 @@ const TITLES: Record<ViewId, [string, string]> = {
     'Listening',
     'What people actually played. The only source that can answer this - past_plays overwrites on replay.'
   ],
+  growth: ['Growth', 'Signups, activation and subscriptions. Each from the only source that can honestly answer it.'],
   cost: ['Cost', 'What this system costs to run. Two independent estimates per model, because one is a number you have to trust.'],
   rad: ['Rad', 'DJ line quality and the upstream providers behind it.'],
   recs: ['Recommendations', 'Pool health and fallback rate. Degradation here is silent by design.'],
@@ -66,6 +69,7 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: IconName }
     group: 'Data',
     items: [
       { id: 'listening', label: 'Listening', icon: 'chart.bar' },
+      { id: 'growth', label: 'Growth', icon: 'chart.line.uptrend' },
       { id: 'cost', label: 'Cost', icon: 'gauge' }
     ]
   },
@@ -503,6 +507,7 @@ export default function App() {
           {view === 'traffic' && <Traffic ctx={ctx} />}
           {view === 'logs' && <Logs ctx={ctx} />}
           {view === 'listening' && <Listening ctx={ctx} />}
+          {view === 'growth' && <Growth ctx={ctx} />}
           {view === 'cost' && <Cost ctx={ctx} />}
           {view === 'rad' && <Rad ctx={ctx} />}
           {view === 'recs' && <Recs ctx={ctx} />}

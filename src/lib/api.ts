@@ -574,3 +574,57 @@ export const useCost = (hours: number, enabled = true) =>
   lift<{ hours: number; models: CostRow[] }>(
     useQuery({ queryKey: ['cost', hours], queryFn: () => cfGet(`/cost?hours=${hours}`), enabled, ...common })
   );
+
+
+/* -- Growth, activation and revenue ---------------------------------------- */
+
+export type GrowthDay = { day: string; signups: number; premiumStarts: number | null; premiumEnds: number | null };
+
+/**
+ * `since` per series, not one date for the response.
+ *
+ * signups reach back to Sept 2025; premium transitions only exist from migration
+ * 0004 onward. Historical transitions are NULL rather than 0 - the backend chose
+ * that deliberately, because defaulting would invent thousands of revocations
+ * that never happened. The view must render null as "not recorded", never as
+ * "none happened".
+ */
+export const useGrowth = (days: number, enabled = true) =>
+  lift<{
+    days: GrowthDay[];
+    since: { signups: string; premiumTransitions: string };
+    unavailable?: Record<string, string>;
+    windowDays: number;
+  }>(
+    useQuery({
+      queryKey: ['growth', days],
+      queryFn: () => backendGet(`/admin/metrics/growth?days=${days}`),
+      enabled,
+      ...common
+    })
+  );
+
+/** Activation from the append-only play log. D1 cannot answer this - see the view. */
+export const useActivation = (days: number, enabled = true) =>
+  lift<{ days: number; byDay: { day: string; activated: number }[] }>(
+    useQuery({ queryKey: ['activation', days], queryFn: () => cfGet(`/ae/activation?days=${days}`), enabled, ...common })
+  );
+
+export const useRevenue = (enabled = true) =>
+  lift<{
+    activeSubscriptions: number | null;
+    byProduct: { productId: string; count: number }[];
+    expiringWithin7d: number | null;
+    expiredNotReconciled: number | null;
+    trialCount: number | null;
+    mrrEstimate: number | null;
+    scope?: { localPremiumRows: number; answered: number; unreachable: number };
+    checkedAt?: string;
+    note?: string;
+  }>(useQuery({ queryKey: ['revenue'], queryFn: () => backendGet('/admin/metrics/revenue'), enabled, ...common }));
+
+/** Station artwork generations. `images: 0` may mean none yet, not zero spend. */
+export const useArtwork = (days: number, enabled = true) =>
+  lift<{ days: number; images: number; cost: number }>(
+    useQuery({ queryKey: ['artwork', days], queryFn: () => cfGet(`/ae/artwork?days=${days}`), enabled, ...common })
+  );

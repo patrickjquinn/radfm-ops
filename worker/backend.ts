@@ -37,8 +37,16 @@ const ALLOWED_GET = [
   /^\/admin\/users$/,
   /^\/admin\/users\/lookup$/,
   /^\/admin\/stations$/,
-  /^\/admin\/metrics\/setlists$/,
-  /^\/admin\/metrics\/cron$/,
+  /**
+   * All read-only metrics, not one regex per route.
+   *
+   * Enumerating them meant /admin/users sat un-allowlisted for days: the proxy
+   * answered `not_allowed` and I never learned the backend had never served it.
+   * An allowlist that silently swallows a route hides what is missing, which is
+   * the opposite of what this dashboard is for. `/admin/metrics/*` is read-only
+   * by construction, so the narrower rule bought nothing.
+   */
+  /^\/admin\/metrics\/[a-z-]+$/,
   /^\/admin\/config$/
 ];
 
