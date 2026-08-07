@@ -197,6 +197,34 @@ const viewFromPath = (): ViewId => {
   return (VIEW_IDS as string[]).includes(seg) ? (seg as ViewId) : 'overview';
 };
 
+/**
+ * Auto-refresh intervals, in minutes. 0 is off.
+ *
+ * Nothing shorter than two minutes, on purpose - see the effect that uses this.
+ */
+const AUTO_CHOICES = [0, 2, 5, 15];
+const AUTO_KEY = 'radfm-ops:auto-mins';
+const readAutoMins = (): number => {
+  try {
+    /*
+      The null check is the whole function.
+      
+      This read `Number(localStorage.getItem(...))` and validated against
+      AUTO_CHOICES. With no key stored, getItem returns null, Number(null) is 0,
+      and 0 IS a valid choice - it means "off". So a first visit resolved to
+      auto-refresh disabled while looking exactly like a deliberate setting, and
+      the default of 5 was unreachable by anyone who had never touched the
+      control. Absent and zero are different values; coercion collapsed them.
+    */
+    const raw = localStorage.getItem(AUTO_KEY);
+    if (raw == null) return 5;
+    const n = Number(raw);
+    return AUTO_CHOICES.includes(n) ? n : 5;
+  } catch {
+    return 5;
+  }
+};
+
 export default function App() {
   const qc = useQueryClient();
   const [view, setViewState] = useState<ViewId>(viewFromPath);
@@ -242,6 +270,7 @@ export default function App() {
   const [jwt, setJwtState] = useState(getJwt());
   const [refreshedAt, setRefreshedAt] = useState(() => Date.now());
   const [, setTick] = useState(0);
+  const [autoMins, setAutoMins] = useState<number>(readAutoMins);
 
   // Demo mode is opt-in via the URL and never a fallback. See lib/fixtures.ts.
   const demo = useMemo<Scenario | null>(() => {
@@ -283,6 +312,55 @@ export default function App() {
   const refresh = () => {
     qc.invalidateQueries();
     setRefreshedAt(Date.now());
+  };
+
+  /**
+   * Leave the tab open and it keeps itself current.
+   *
+   * Two constraints shape the options rather than taste:
+   *
+   * The backend runs a PER-IP rate limiter on /admin/*, and its 404 is
+   * indistinguishable from "not allowed" and from "migration missing" - a 404
+   * where something worked a minute ago is most often the limiter. A dashboard
+   * polling itself into that state would turn every admin panel unreadable and
+   * then report its own rate-limiting as open signals: a self-inflicted incident
+   * that reads exactly like a real one. So the shortest interval on offer is two
+   * minutes, and there is deliberately no 30s or 1m.
+   *
+   * And it does not poll a tab nobody is looking at. A buried tab spends the
+   * Cloudflare API budget and the daily neuron allocation to render pixels into
+   * a void; it catches up the moment the tab is visible again instead. The AI
+   * panels are safe to invalidate on this cadence because both gateway calls are
+   * cached for an hour on the situation rather than the request body, so a
+   * refetch with nothing changed is a cache hit rather than another inference.
+   */
+  useEffect(() => {
+    if (!autoMins) return;
+    const tick = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    const id = setInterval(tick, autoMins * 60_000);
+    // Coming back to the tab should not mean waiting out the rest of an interval
+    // in front of numbers that went stale while it was hidden.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - refreshedAt > autoMins * 60_000) refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMins, refreshedAt]);
+
+  const cycleAuto = () => {
+    const next = AUTO_CHOICES[(AUTO_CHOICES.indexOf(autoMins) + 1) % AUTO_CHOICES.length];
+    setAutoMins(next);
+    try {
+      localStorage.setItem(AUTO_KEY, String(next));
+    } catch {
+      /* private mode - the setting just does not survive the session */
+    }
   };
 
   /**
@@ -622,26 +700,78 @@ export default function App() {
                 ))}
               </div>
               )}
-              <button
-                type="button"
-                onClick={refresh}
+              {/*
+                One pill, two controls. Left half refreshes now, right half sets
+                the cadence - both are things you actually do to a dashboard you
+                are watching, and splitting them into two separate widgets would
+                put a third box in a header that already carries a range group.
+              */}
+              <div
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
+                  alignItems: 'stretch',
                   height: 34,
-                  padding: '0 12px',
                   borderRadius: 8,
                   border: '1px solid rgba(255,255,255,0.1)',
                   background: 'rgba(255,255,255,0.04)',
-                  cursor: 'pointer'
+                  overflow: 'hidden'
                 }}
               >
-                <span style={dot(stale ? C.warn : C.ok, !stale)} />
-                <span style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.62)', whiteSpace: 'nowrap' }}>
-                  {freshLabel}
-                </span>
-              </button>
+                <button
+                  type="button"
+                  onClick={refresh}
+                  title="Refresh every panel now"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '0 12px',
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {/*
+                    The dot pulses while the data is current and stops when it is
+                    not - the one place in this product where motion means live.
+                    Amber past two minutes regardless of the auto setting, because
+                    "we have not re-read this" is true whether or not you asked
+                    for it to be re-read.
+                  */}
+                  <span style={dot(stale ? C.warn : C.ok, !stale)} />
+                  <span
+                    style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.62)', whiteSpace: 'nowrap' }}
+                  >
+                    {freshLabel}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={cycleAuto}
+                  aria-label={
+                    autoMins ? `Auto-refresh every ${autoMins} minutes. Click to change.` : 'Auto-refresh off. Click to enable.'
+                  }
+                  title={
+                    autoMins
+                      ? `Re-reads every panel every ${autoMins} min while this tab is visible. Click to change.`
+                      : 'Auto-refresh is off. Click to enable.'
+                  }
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '0 11px',
+                    border: 'none',
+                    borderLeft: '1px solid rgba(255,255,255,0.1)',
+                    background: autoMins ? 'rgba(63,179,166,0.10)' : 'transparent',
+                    cursor: 'pointer',
+                    font: `400 11.5px/1 ${FONT.mono}`,
+                    color: autoMins ? C.ok : C.t3,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {autoMins ? `auto ${autoMins}m` : 'auto off'}
+                </button>
+              </div>
             </div>
           </div>
 
