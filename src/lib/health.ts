@@ -599,17 +599,50 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     badges.rad = { text: String(djFellBack), kind: 'warn' };
   if (recsPct != null && recsPct >= RECS_DEGRADED_WARN) badges.recs = { text: `${Math.round(recsPct)}%`, kind: 'warn' };
 
-  const bad = open.filter((s) => s.sev === 'bad').length;
   /*
-    Order matters: a source that has already FAILED outranks one still in flight,
-    because "we could not read it" is a finding and "we have not read it yet" is
-    not. Only when nothing has failed and something is pending do we say so.
+    A FAILURE can be declared from one source. HEALTH cannot.
+    
+    This blocked the entire verdict on every source answering, which meant the
+    hero read "Reading 1 source" for as long as the slowest one took - and the
+    slowest is always Workers Observability, measured at 6.4s on a 6 hour window
+    holding 60 events and 9.9s on 72 hours. That is a fixed cost in their API,
+    not our query, so no amount of tuning moves it: for six to ten seconds the
+    page showed nothing at all while thirteen sources sat answered and one
+    straggled.
+    
+    The asymmetry fixes it without weakening anything. "Something is failing" is
+    supported by the one source that says so, so it can be shown the moment it is
+    known. "Nothing is failing" is a claim about ALL of them and still waits for
+    all of them - which was the point of the loading state and is untouched.
+    
+    The count is qualified while sources are outstanding, because "1 signal open"
+    computed over a partial read could become 2.
   */
-  const verdict: Verdict = !unreadable.length && pending.length
+  const bad = open.filter((x) => x.sev === 'bad').length;
+  const stillReading = pending.length;
+  const verdict: Verdict = bad
+    ? {
+        tone: 'bad',
+        title: `Degraded - ${open.length} signal${open.length === 1 ? '' : 's'} open`,
+        sub: stillReading
+          ? `${open.filter((x) => x.sev === 'bad')[0]?.title ?? ''}. ${stillReading} source${
+              stillReading === 1 ? ' is' : 's are'
+            } still reading, so there may be more.`
+          : open.filter((x) => x.sev === 'bad').length === 1
+            ? `${open.find((x) => x.sev === 'bad')!.title}.`
+            : 'The failing signals are listed first below, ranked by blast radius.',
+        stats: []
+      }
+    : !unreadable.length && pending.length
     ? {
         tone: 'loading',
-        title: `Reading ${pending.length} source${pending.length === 1 ? '' : 's'}`,
-        sub: 'Nothing on this page is a claim yet. The verdict appears once every source has answered.',
+        // Name them. "Reading 1 source" is a count of a thing you cannot see,
+        // and the one it is nearly always waiting on is worth knowing by name.
+        title:
+          pending.length <= 2
+            ? `Reading ${pending.map((x) => x.label.toLowerCase()).join(' and ')}`
+            : `Reading ${pending.length} sources`,
+        sub: 'Nothing here is a claim yet. Anything already failing would be shown; a clean verdict waits for every source.',
         stats: []
       }
     : unreadable.length
@@ -640,33 +673,14 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
          * belongs on them. The verdict answers "is something failing", and an
          * open warning is not a failure. If it were, it would be a `bad` signal.
          */
-        tone: bad ? 'bad' : 'ok',
-        title: bad
-          ? `Degraded - ${open.length} signal${open.length === 1 ? '' : 's'} open`
-          : open.length
+        // Only reached with nothing failing - the bad branch is handled above.
+        tone: 'ok',
+        title: open.length
             ? `Healthy - ${open.length} signal${open.length === 1 ? '' : 's'} open`
             : 'Healthy - no signals open',
-        /*
-          Name the thing when there is one thing.
-          
-          "Degraded - 1 signal open" is a count, and a count is not an answer:
-          it left an operator knowing something was wrong and not what. The
-          headline stays a count because it also has to work at five, but the
-          line under it now says which, and the card is directly beneath.
-        */
-        /*
-          The title only. This carried the full action too, which then appeared
-          again word for word in the card sixty pixels below - the caption's job
-          is to say WHICH signal, and the card's job is to say what to do about
-          it. Saying both twice made the caption long enough to skip.
-        */
-        sub: bad
-          ? open.filter((x) => x.sev === 'bad').length === 1
-            ? `${open.find((x) => x.sev === 'bad')!.title}.`
-            : 'The failing signals are listed first below, ranked by blast radius.'
-          : open.length
-            ? 'Nothing is failing. The open signals below are worth reading, not chasing.'
-            : 'Every source read cleanly and none of them is reporting a problem.',
+        sub: open.length
+          ? 'Nothing is failing. The open signals below are worth reading, not chasing.'
+          : 'Every source read cleanly and none of them is reporting a problem.',
         stats: [
           { value: fourxxTotal != null ? compact(fourxxTotal) : '-', label: '4xx', tone: fourxxTotal && fourxxTotal > 1000 ? 'bad' : 'plain' },
           {
