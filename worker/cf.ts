@@ -340,8 +340,23 @@ app.get('/logs', async (c) => {
   if (out.ok === false) return c.json(out);
 
   const events: any[] = out.data?.result?.events?.events ?? out.data?.result?.events ?? [];
-  const groups = level === 'warn' ? groupNormalised(events) : null;
-  const sampled = groups ? groups.reduce((a, b) => a + b.count, 0) : events.length;
+  /**
+   * Errors are normalised too. They were not, and there was no reason for it.
+   *
+   * The warnings panel exists because one failure mode arrived once per artist
+   * name and occupied twelve of the top twenty rows at a count of one each. The
+   * error path had the identical problem and none of the fix: it returned up to
+   * 100 raw lines and the view rendered one row per line, so a single orchestrator
+   * fault repeating every few minutes read as a hundred separate incidents and
+   * its actual frequency was invisible. That is the more severe level getting the
+   * worse treatment.
+   *
+   * The raw events still ship alongside, because for an error the exact text and
+   * the path are what you debug from - the grouping answers "how often", the
+   * lines answer "what exactly".
+   */
+  const groups = groupNormalised(events);
+  const sampled = groups.reduce((a, b) => a + b.count, 0);
   // A failed count query must not silently become 0 warnings, so it degrades to
   // null and the UI reads it as unavailable rather than as quiet.
   const total = totalOut.ok === false ? null : exactTotal(totalOut.data?.result);

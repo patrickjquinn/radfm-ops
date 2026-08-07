@@ -73,14 +73,59 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
         ) : (
           <Source data={err} what="Errors">
             {(d) =>
-              d.events && d.events.length ? (
-                <ErrorRows
-                  rows={d.events.map((e: any) => ({
-                    time: e.timestamp ? new Date(e.timestamp).toISOString().slice(11, 19) + 'Z' : '-',
-                    msg: e.message,
-                    route: e.route
-                  }))}
-                />
+              (d.groups && d.groups.length) || (d.events && d.events.length) ? (
+                <>
+                  {/*
+                    Errors get the same treatment warnings do, which they did not
+                    before: normalised grouping first, semantic clustering over
+                    that, then the raw lines.
+
+                    The panel used to render one row per raw event, so a single
+                    orchestrator fault repeating every few minutes read as a
+                    hundred separate incidents and you could not see that it was
+                    one thing happening often. That is precisely the bug the
+                    warnings panel was built to fix, left in place on the more
+                    severe level.
+                  */}
+                  {d.groups && d.groups.length > 0 && (
+                    <>
+                      <Cluster groups={d.groups} tone="bad" />
+                      <WarnRows rows={d.groups.map((g) => toWarnRow(g, 1))} noun="error groups" />
+                    </>
+                  )}
+
+                  {!d.covered && d.total != null && (
+                    <div style={{ paddingTop: 12 }}>
+                      <Prose>
+                        <strong style={{ color: C.bad, fontWeight: 500 }}>
+                          {d.total.toLocaleString()} error{d.total === 1 ? '' : 's'} in this window
+                        </strong>
+                        ; the grouping above is built from a {d.sampled.toLocaleString()}-event sample, so treat the
+                        ranking as the signal and not the counts.
+                      </Prose>
+                    </div>
+                  )}
+
+                  {/*
+                    The lines stay, behind a click. Grouping answers "how often";
+                    for an error the exact text and the path are what you debug
+                    from, and no normalisation can preserve those.
+                  */}
+                  {d.events && d.events.length > 0 && (
+                    <div style={{ paddingTop: d.groups && d.groups.length ? 16 : 0 }}>
+                      <Collapsible
+                        rows={d.events.map((e: any) => ({
+                          time: e.timestamp ? new Date(e.timestamp).toISOString().slice(11, 19) + 'Z' : '-',
+                          msg: e.message,
+                          route: e.route
+                        }))}
+                        initial={d.groups && d.groups.length ? 0 : 6}
+                        noun="raw error lines"
+                        render={(r, i) => <ErrorRow key={`${r.time}-${i}`} {...r} />}
+                      />
+                    </div>
+                  )}
+                </>
               ) : (
                 <NoErrors go={() => ctx.go('traffic')} />
               )
@@ -92,21 +137,33 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
   );
 }
 
-const toWarnRow = (g: LogGroup) => ({
+/**
+ * `bad` colours the count, and the bar for that is not the same at both levels.
+ * 500 warnings in a window is noise worth naming; 500 errors would be an outage
+ * and two is already a pattern, so the error path passes its own threshold
+ * rather than inheriting a number tuned for the quieter level.
+ */
+const toWarnRow = (g: LogGroup, loudAt = 500) => ({
   count: g.count,
   msg: g.msg,
   window: g.first && g.last ? `first ${rel(g.first)} · last ${rel(g.last)}` : '',
-  bad: g.count > 500
+  bad: g.count > loudAt
 });
 
-function WarnRows({ rows }: { rows: { count: number; msg: string; window: string; bad?: boolean }[] }) {
+function WarnRows({
+  rows,
+  noun = 'warning groups'
+}: {
+  rows: { count: number; msg: string; window: string; bad?: boolean }[];
+  noun?: string;
+}) {
   // Ranked by count, so the answer is nearly always in the first few. Twenty-two
   // groups is one finding and twenty-one rows of tail.
   return (
     <Collapsible
       rows={rows}
       initial={6}
-      noun="warning groups"
+      noun={noun}
       render={(w) => (
         <div
           key={w.msg}
@@ -134,27 +191,33 @@ function WarnRows({ rows }: { rows: { count: number; msg: string; window: string
   );
 }
 
+/** One raw error line. Shared by the demo path and the collapsible live list. */
+function ErrorRow({ time, msg, route }: { time: string; msg: string; route: string }) {
+  return (
+    <div
+      style={{
+        padding: '12px 0',
+        borderBottom: LINE.row,
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '10px 14px',
+        alignItems: 'baseline'
+      }}
+    >
+      <span style={{ font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.4)', flex: 'none' }}>{time}</span>
+      <span style={{ flex: '1 1 300px', minWidth: 0, font: `400 12.5px/1.5 ${FONT.mono}`, color: '#FF8078' }}>
+        {msg}
+      </span>
+      <span style={{ font: `400 11px/1.4 ${FONT.mono}`, color: 'rgba(255,255,255,0.5)', flex: 'none' }}>{route}</span>
+    </div>
+  );
+}
+
 function ErrorRows({ rows }: { rows: { time: string; msg: string; route: string }[] }) {
   return (
     <>
       {rows.map((e, i) => (
-        <div
-          key={i}
-          style={{
-            padding: '12px 0',
-            borderBottom: LINE.row,
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '10px 14px',
-            alignItems: 'baseline'
-          }}
-        >
-          <span style={{ font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.4)', flex: 'none' }}>{e.time}</span>
-          <span style={{ flex: '1 1 300px', minWidth: 0, font: `400 12.5px/1.5 ${FONT.mono}`, color: '#FF8078' }}>
-            {e.msg}
-          </span>
-          <span style={{ font: `400 11px/1.4 ${FONT.mono}`, color: 'rgba(255,255,255,0.5)', flex: 'none' }}>{e.route}</span>
-        </div>
+        <ErrorRow key={i} {...e} />
       ))}
     </>
   );
@@ -221,7 +284,7 @@ function rel(ts: number) {
  * report. A panel that appears only when it has something to say is worth
  * reading; one that says "no findings" on every load teaches you to skip it.
  */
-function Cluster({ groups }: { groups: LogGroup[] }) {
+function Cluster({ groups, tone = 'warn' }: { groups: LogGroup[]; tone?: 'warn' | 'bad' }) {
   const c = useCluster(
     groups.map((g) => ({ msg: g.msg, count: g.count })),
     true
@@ -247,7 +310,10 @@ function Cluster({ groups }: { groups: LogGroup[] }) {
                   ↳ {msg}
                 </div>
               ))}
-              <div style={{ ...num, font: `500 12px/1.4 ${FONT.mono}`, color: C.warnText }}>
+              {/* The combined figure carries the level's colour, like every
+                  other count in this product. Amber for warnings, red for
+                  errors - the same panel component, two different severities. */}
+              <div style={{ ...num, font: `500 12px/1.4 ${FONT.mono}`, color: tone === 'bad' ? C.bad : C.warnText }}>
                 {m.total.toLocaleString()} combined
               </div>
             </div>

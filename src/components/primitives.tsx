@@ -375,7 +375,12 @@ export function Collapsible<T>({
             transition: `color ${MOTION}`
           }}
         >
-          {open ? `Show fewer` : `${hidden} more ${noun}`}
+          {/*
+            "more" only makes sense when some are already on screen. With
+            initial={0} the list starts closed and "100 more raw error lines"
+            reads as a second hundred hiding behind the first.
+          */}
+          {open ? `Show fewer` : initial === 0 ? `Show ${hidden} ${noun}` : `${hidden} more ${noun}`}
           <span style={{ display: 'flex', transform: open ? 'rotate(-90deg)' : 'rotate(90deg)', transition: `transform ${MOTION}` }}>
             <Icon name="chevron.right" size={10} />
           </span>
