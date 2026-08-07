@@ -46,12 +46,23 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
   const promos = list.state === 'ok' ? list.data.promotions : [];
   const active = promos.filter((p) => p.active);
   /*
-    Already-promoted ids, so a result that would 409 says so instead of offering
-    a button that cannot work. The API's refusal is correct and the error copy
-    handles it, but an operator should not have to trigger an error to discover
-    a fact the page already has on screen.
+    Already-promoted, matched two ways, mirroring the backend's own index.
+
+    A result that would 409 says so instead of offering a button that cannot
+    work. `appleId` is the obvious key - but Apple routinely lists one recording
+    under several ids (two of ten in a single search, measured by the backend),
+    and those share an ISRC. Promoting both used to be allowed and gave one
+    recording two independent daily caps: up to 4 plays a day against a cap
+    reading 2. The pool already deduped by ISRC so nobody ever heard it twice in
+    a set; the damage was entirely to the allowance.
+
+    The backend now blocks it at a partial unique index on `isrc` where
+    `active = 1 AND isrc IS NOT NULL`, so this mirrors exactly that: ACTIVE
+    promotions only, and ISRC only where both sides have one. Everything else
+    falls back to appleId, which for an artist promotion is the best key there is.
   */
-  const promotedIds = new Set(active.map((p) => p.appleId));
+  const blockedBy = (r: PromoSearchResult): Promotion | null =>
+    active.find((p) => p.appleId === r.appleId || (!!r.isrc && !!p.isrc && p.isrc === r.isrc)) ?? null;
 
   return (
     <div style={{ display: 'grid', gap: GAP }}>
@@ -192,7 +203,7 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
                       key={r.appleId}
                       r={r}
                       kind={kind}
-                      alreadyPromoted={promotedIds.has(r.appleId)}
+                      blocking={blockedBy(r)}
                       busy={create.isPending}
                       onPromote={(opts) =>
                         create.mutate({
@@ -294,16 +305,22 @@ type PromoOpts = { weight?: number; dailyCapPerUser?: number };
 function ResultCard({
   r,
   kind,
-  alreadyPromoted,
+  blocking,
   busy,
   onPromote
 }: {
   r: PromoSearchResult;
   kind: 'song' | 'artist';
-  alreadyPromoted: boolean;
+  /** The active promotion that would block this save, if any. */
+  blocking: Promotion | null;
   busy: boolean;
   onPromote: (opts: PromoOpts) => void;
 }) {
+  const alreadyPromoted = Boolean(blocking);
+  // Same recording under a DIFFERENT catalogue id. Worth distinguishing: a row
+  // with another name and another sleeve reading "promoted" is confusing unless
+  // it says why.
+  const sameRecording = Boolean(blocking && blocking.appleId !== r.appleId);
   const [open, setOpen] = useState(false);
   const [weight, setWeight] = useState(1);
   const [cap, setCap] = useState(2);
@@ -345,16 +362,23 @@ function ResultCard({
             // Not a disabled button with a tooltip: the fact is already on this
             // page, so saying it is cheaper than making them click to find out.
             <span
+              title={
+                sameRecording
+                  ? `Already promoted as "${blocking!.name}" (Apple id ${blocking!.appleId}). Apple lists this recording under more than one id; both share ISRC ${r.isrc}.`
+                  : 'Already promoted.'
+              }
               style={{
                 padding: '7px 13px',
                 borderRadius: 8,
                 font: `500 11.5px/1.2 ${FONT.mono}`,
                 background: 'rgba(63,179,166,0.10)',
                 color: C.ok,
-                border: '1px solid rgba(63,179,166,0.28)'
+                border: '1px solid rgba(63,179,166,0.28)',
+                cursor: 'help',
+                whiteSpace: 'nowrap'
               }}
             >
-              promoted
+              {sameRecording ? 'same recording' : 'promoted'}
             </span>
           ) : (
             <>
@@ -727,7 +751,10 @@ function WriteError({ err }: { err: unknown }) {
   const reason = (err as any)?.reason ?? 'unknown';
   const detail = (err as any)?.detail;
   const text: Record<string, string> = {
-    already_promoted: 'Already promoted. Retire the existing promotion before creating a new one for the same act.',
+    // The backend's own text names the blocking promotion, its Apple id and the
+    // shared ISRC. Shown verbatim below when present - a generic line here would
+    // throw away the one thing that makes this refusal actionable.
+    already_promoted: 'Already promoted. Retire the existing promotion before creating a new one for the same recording.',
     not_in_storefront:
       'No such id in that storefront. The catalogue is per-storefront, so an id from one may not exist in another.',
     bad_request:
@@ -754,9 +781,17 @@ function WriteError({ err }: { err: unknown }) {
       >
         Not saved
       </div>
+      {/*
+        The backend's own text wins when there is one.
+        
+        Its 409 now names the blocking promotion, its Apple id and the shared
+        ISRC - strictly better than anything generic written here, and printing
+        both said the same thing twice in the space where an operator is trying
+        to work out what to do. The lines below are the fallback for a refusal
+        that arrives without detail, not a preamble to it.
+      */}
       <div style={{ font: `400 12.5px/1.6 ${FONT.text}`, color: C.t2, maxWidth: '78ch' }}>
-        {text[reason] ?? `The backend returned ${reason}.`}
-        {detail && <span style={{ color: C.t3 }}> {detail}</span>}
+        {detail || text[reason] || `The backend returned ${reason}.`}
       </div>
     </div>
   );
