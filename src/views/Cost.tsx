@@ -29,6 +29,24 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
         per-token rate. A gap is usually prompt caching - ours prices every input token uncached, so it reads high.
       </Callout>
 
+      {/*
+        Speech is a cost category this page cannot see at all.
+        
+        Every break Rad speaks is a Speechify call, and Speechify does not go
+        through AI Gateway - so it appears in no figure here. The page is titled
+        "what this system costs to run", which made that omission a claim rather
+        than a gap. It is also not small: TTS runs once per break INCLUDING the
+        idents and sponsors, which are static text and cost no model call for the
+        copy but are still spoken.
+      */}
+      <Callout tone="amber">
+        <strong style={{ fontWeight: 500, color: '#fff' }}>Speech is not on this page.</strong> Every spoken break
+        goes to Speechify (<code style={{ font: `400 12px/1 ${FONT.mono}`, color: C.warnText }}>simba-3.2</code>), which
+        does not route through AI Gateway, so it appears in no figure below. Idents and sponsors are static text and
+        cost no model call for the copy, but they are still spoken - so TTS volume tracks total breaks, not the
+        generated ones. Priced from Speechify's own dashboard, not from here.
+      </Callout>
+
       <Source data={cost} what="AI spend" skeleton={<SkelStats n={4} min={190} />}>
         {(d) => {
           const reported = d.models.reduce((a, m) => a + m.reported, 0);

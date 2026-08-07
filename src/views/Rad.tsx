@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
 import { Bar, Collapsible, Prose, SectionHead, Source, Panel, SkelBars, SkelRows } from '../components/primitives';
-import { useAeDj, useAeDjLines, useAeProbe, useAeUpstream, type DjLine } from '../lib/api';
+import { useAeDj, useAeDjLines, useAeDjSessions, useAeProbe, useAeUpstream, type DjLine, type DjSession } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
 export default function Rad({ ctx }: { ctx: Ctx }) {
@@ -10,7 +11,20 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
   const probe = useAeProbe();
   const dj = useAeDj(ctx.hours);
   const upstream = useAeUpstream(ctx.hours);
-  const lines = useAeDjLines(ctx.hours, !demo);
+  /**
+   * A session, or none. The list is the entry point, the lines are the payload.
+   *
+   * The backend's guidance is explicit: almost every real Rad defect has been
+   * diagnosed by reading ten consecutive breaks, and almost none by reading a
+   * chart. Rad keeps no memory beyond the last four lines of the current
+   * session, so the failures that matter - a phrase repeating, an invented
+   * shared history, a rotation that stopped rotating - only exist ACROSS
+   * consecutive breaks to one listener. A newest-first list across everybody
+   * interleaves sessions and hides exactly that, which is what this panel did.
+   */
+  const [session, setSession] = useState<string | null>(null);
+  const sessions = useAeDjSessions(ctx.hours, !demo);
+  const lines = useAeDjLines(ctx.hours, session, !demo);
 
   // Unverified is a first-class state. Rendering a plausible-looking chart from a
   // source nobody has confirmed is the worst thing this dashboard could do, so
@@ -91,12 +105,31 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
         a DJ line can be well-formed, fast, non-degenerate and still bad.
       */}
       {!demo && (
-        <Panel title="What Rad said" meta="rad_fm_events · blob4 · newest 30">
+        <Panel
+          title="What Rad said"
+          meta={session ? `session ${session.slice(0, 8)} · in order` : 'rad_fm_events · blob4 · pick a session'}
+        >
+          {/*
+            Sessions first, lines second. One break in isolation says almost
+            nothing; the same break with the four around it is how every real
+            defect here has actually been found.
+          */}
+          <Source data={sessions} what="DJ sessions" skeleton={<SkelRows rows={5} cols={[null, 80, 90]} />}>
+            {(sd) =>
+              sd.rows.length ? (
+                <SessionRows rows={sd.rows} selected={session} pick={setSession} />
+              ) : (
+                <Empty text="No sessions in this window. blob5 was added on 6 Aug, so a window reaching back past it will be empty." />
+              )
+            }
+          </Source>
+
+          <div style={{ paddingTop: 16 }}>
           <Source data={lines} what="DJ lines" skeleton={<SkelRows rows={6} cols={[null, 90, 70]} />}>
             {(d) =>
               d.rows.length ? (
                 <>
-                  <LineRows rows={d.rows} />
+                  <LineRows rows={d.rows} chronological={Boolean(session)} />
                   <div style={{ paddingTop: 12 }}>
                     <Prose max={78}>
                       <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>/ai</code> is
@@ -112,6 +145,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
               )
             }
           </Source>
+          </div>
         </Panel>
       )}
 
@@ -357,15 +391,25 @@ const Cell = ({ w, value, color, weight = 400 }: { w: number; value: string; col
  * out in words rather than by colour alone, because it is the one row here where
  * what the listener heard is not what is printed.
  */
-function LineRows({ rows }: { rows: DjLine[] }) {
+function LineRows({ rows, chronological }: { rows: DjLine[]; chronological: boolean }) {
   return (
     <Collapsible
       rows={rows}
-      initial={6}
+      // A session opens showing ten, because ten consecutive breaks is the unit
+      // the backend says diagnoses almost everything. The all-listeners sample
+      // opens at six, because there is nothing to follow across those rows.
+      initial={chronological ? 10 : 6}
       noun="lines"
       render={(r, i) => (
         <div key={`${r.at}-${i}`} style={{ padding: '12px 0', borderBottom: LINE.row }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
+            {/* Break number, so "he said this twice in a row" is readable as a
+                fact about position rather than something you have to count. */}
+            {chronological && (
+              <span style={{ ...num, width: 22, flex: 'none', font: `400 11px/1.6 ${FONT.mono}`, color: C.t3 }}>
+                {i + 1}
+              </span>
+            )}
             <span style={{ flex: '1 1 340px', minWidth: 0, font: `400 13px/1.55 ${FONT.text}`, color: 'rgba(255,255,255,0.88)' }}>
               {r.text}
             </span>
@@ -408,6 +452,79 @@ function LineRows({ rows }: { rows: DjLine[] }) {
       )}
     />
   );
+}
+
+/**
+ * One row per session, ranked by recency, with the fallback count attached.
+ *
+ * Fallbacks lead the eye because a session where the listener actually heard
+ * canned lines is the one worth reading. The id is truncated - it identifies a
+ * session, not a person, and the full string earns nothing on screen.
+ */
+function SessionRows({
+  rows,
+  selected,
+  pick
+}: {
+  rows: DjSession[];
+  selected: string | null;
+  pick: (s: string | null) => void;
+}) {
+  return (
+    <Collapsible
+      rows={rows}
+      initial={5}
+      noun="sessions"
+      render={(r) => {
+        const on = r.session === selected;
+        return (
+          <button
+            key={r.session}
+            type="button"
+            onClick={() => pick(on ? null : r.session)}
+            aria-pressed={on}
+            style={{
+              display: 'flex',
+              gap: 14,
+              width: '100%',
+              textAlign: 'left',
+              alignItems: 'baseline',
+              padding: '11px 8px 11px 6px',
+              border: 'none',
+              borderBottom: LINE.row,
+              borderRadius: 6,
+              background: on ? 'rgba(63,179,166,0.08)' : 'transparent',
+              cursor: 'pointer'
+            }}
+          >
+            <span style={{ font: `400 12px/1.4 ${FONT.mono}`, color: on ? C.ok : 'rgba(255,255,255,0.78)', flex: 'none' }}>
+              {r.session.slice(0, 12)}
+            </span>
+            <span style={{ flex: 1 }} />
+            {r.fellBack > 0 && (
+              <span style={{ font: `500 11px/1.4 ${FONT.mono}`, color: C.bad, flex: 'none' }}>
+                {r.fellBack} canned
+              </span>
+            )}
+            <span style={{ ...num, width: 74, textAlign: 'right', font: `400 12px/1.2 ${FONT.mono}`, color: C.t2 }}>
+              {r.n} break{r.n === 1 ? '' : 's'}
+            </span>
+            <span style={{ width: 62, textAlign: 'right', font: `400 11px/1.2 ${FONT.mono}`, color: C.t3 }}>
+              {rel(r.lastAt)}
+            </span>
+          </button>
+        );
+      }}
+    />
+  );
+}
+
+/** Relative age from an Analytics Engine timestamp string. */
+function rel(at: string): string {
+  const t = Date.parse(at);
+  if (!Number.isFinite(t)) return '-';
+  const m = Math.max(0, Math.round((Date.now() - t) / 60_000));
+  return m < 1 ? 'now' : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`;
 }
 
 const Empty = ({ text }: { text: string }) => (

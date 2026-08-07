@@ -242,18 +242,38 @@ export const useAeDj = (hours: number) =>
 export type DjLine = {
   text: string;
   style: string;
+  session: string;
   reason: string;
   fellBack: boolean;
   len: number;
   at: string;
 };
 
-/** What Rad actually said. Only answerable since blob4 landed on 6 Aug. */
-export const useAeDjLines = (hours: number, enabled = true) =>
-  lift<{ rows: DjLine[] }>(
+/**
+ * What Rad actually said. Only answerable since blob4 landed on 6 Aug.
+ *
+ * With a session, the lines come back in the order the listener heard them.
+ * Without one, newest-first across everybody - useful for a glance, useless for
+ * diagnosis, which is why the view defaults to picking a session.
+ */
+export const useAeDjLines = (hours: number, session: string | null, enabled = true) =>
+  lift<{ rows: DjLine[]; session: string | null }>(
     useQuery({
-      queryKey: ['ae-dj-lines', hours],
-      queryFn: () => cfGet(`/ae/dj-lines?hours=${hours}`),
+      queryKey: ['ae-dj-lines', hours, session ?? ''],
+      queryFn: () => cfGet(`/ae/dj-lines?hours=${hours}${session ? `&session=${encodeURIComponent(session)}` : ''}`),
+      enabled,
+      ...common
+    })
+  );
+
+export type DjSession = { session: string; n: number; fellBack: number; firstAt: string; lastAt: string };
+
+/** One row per listening session, so consecutive breaks can be read together. */
+export const useAeDjSessions = (hours: number, enabled = true) =>
+  lift<{ rows: DjSession[] }>(
+    useQuery({
+      queryKey: ['ae-dj-sessions', hours],
+      queryFn: () => cfGet(`/ae/dj-sessions?hours=${hours}`),
       enabled,
       ...common
     })

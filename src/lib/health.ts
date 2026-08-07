@@ -46,6 +46,26 @@ export type Badge = { text: string; kind: 'bad' | 'warn' | 'plain' };
  * different from claiming health.
  */
 const DJ_NONOK_WARN = 25;
+
+/**
+ * Fallbacks, as a share of DJ breaks. This is the number that describes damage.
+ *
+ * A guard rejection is the system WORKING - it caught a bad line before anyone
+ * heard it, at a cost of one extra model call. A fallback is the guard rejecting
+ * twice and the listener getting a deterministic canned line instead of a show.
+ * The backend measured the gap over three days: simile was rejected 43 times and
+ * reached nobody, stutter was rejected 4 times and reached a listener every time.
+ * Ten times the volume, none of the harm.
+ *
+ * So the signal fires on this and the non-ok share only decorates it. Ranking a
+ * health signal by rejection volume points confidently at the harmless one,
+ * which is precisely what happened to the backend when they first read this page.
+ *
+ * Low on purpose: at ~44 breaks a day, 5% is roughly two listeners hearing a
+ * canned line, and there is no healthy baseline of fallbacks to leave room for -
+ * unlike rejections, the correct number here is zero.
+ */
+const DJ_FELLBACK_WARN = 5;
 const RECS_DEGRADED_WARN = 10;
 const MIN_SAMPLE = 30;
 
@@ -312,19 +332,34 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       ? traffic.data.series.reduce((a: number, s: any) => a + Number(s.sum?.errors ?? 0), 0)
       : null;
   const djPct = dj.state === 'ok' ? nonOkPct(dj.data.rows) : null;
+  const djFellBackPct = dj.state === 'ok' ? fellBackPct(dj.data.rows) : null;
+  const djFellBack =
+    dj.state === 'ok' ? dj.data.rows.reduce((a: number, r: any) => a + Number(r.fellBack ?? 0), 0) : null;
   const recsPct = recs.state === 'ok' ? degradedPct(recs.data.rows) : null;
   const recsZero = recs.state === 'ok' ? (recs.data.zeroTrackRequests ?? null) : null;
   const missingPlayedAt = stats.state === 'ok' ? stats.data.dataQuality?.pastPlaysMissingPlayedAt : undefined;
 
-  if (djPct != null && hours >= DJ_MIN_WINDOW_HOURS && djPct >= DJ_NONOK_WARN)
+  /*
+    Fires on FALLBACKS, not on rejections.
+    
+    This fired on the non-ok share crossing 25%, which is the count of takes the
+    guard caught - the system doing its job. It would go amber while every
+    listener heard a good line, and stay silent while a rare reason fell back
+    100% of the time and every listener on it heard canned filler. The backend
+    hit exactly that: stutter, 4 rejections, 4 reaching listeners, invisible
+    under a panel dominated by 43 harmless similes.
+  */
+  if (djFellBackPct != null && hours >= DJ_MIN_WINDOW_HOURS && djFellBackPct >= DJ_FELLBACK_WARN)
     signals.unshift({
-      id: 'signal:dj-degeneracy',
-      title: 'DJ degeneracy rising',
-      evidence: `Non-ok share is ${Math.round(djPct)}% against a ~14% baseline. The guard is rejecting more takes, and regressions here are otherwise only detectable by listening to the radio.`,
-      metric: `${Math.round(djPct)}%`,
+      id: 'signal:dj-fellback',
+      title: 'Listeners are hearing canned DJ lines',
+      evidence: `${djFellBack} break${djFellBack === 1 ? '' : 's'} fell back to a stock line - the guard rejected twice and the retry could not clear it. ${
+        djPct != null ? `Rejections are at ${Math.round(djPct)}%, against a ~14% baseline that is normal and costs nothing.` : ''
+      } Only the fallbacks are damage.`,
+      metric: `${djFellBackPct.toFixed(1)}%`,
       source: 'Analytics Engine',
       action:
-        'Open Rad and read the "reached a listener" column, not the rejection counts. A reason rejected often that reached nobody is harmless; any reason with a non-zero reached count is the one costing listeners.',
+        'Open Rad, find the reason with a non-zero "reached" count, then open a session that fell back and read the breaks in order. A guard that rejects the same line twice is usually one the retry cannot satisfy - stutter tripping on a song title the retry has to repeat was exactly that.',
       sev: 'warn',
       go: 'rad'
     });
@@ -529,8 +564,24 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       kind: open.some((s) => s.sev === 'bad') ? 'bad' : 'warn'
     };
   if (fourxxTotal) badges.traffic = { text: compact(fourxxTotal), kind: fourxxTotal > 1000 ? 'warn' : 'plain' };
-  if (warnTotal) badges.logs = { text: compact(warnTotal), kind: warnTotal > 500 ? 'warn' : 'plain' };
-  if (djPct != null && hours >= DJ_MIN_WINDOW_HOURS && djPct >= DJ_NONOK_WARN) badges.rad = { text: `${Math.round(djPct)}%`, kind: 'warn' };
+  /*
+    Warning VOLUME is not a health signal, and this badge said it was.
+    
+    It went amber past 500, which the backend's own explainer contradicts
+    directly: warnings are where real bugs hide - a setlist bug that disabled a
+    third of all gigs lived entirely in them - but most are one upstream lookup
+    missing, and the count tracks traffic rather than health. An amber badge on
+    a busy-but-fine day teaches you that Logs is always amber, which is the
+    fastest way to lose the panel that catches the bugs nothing throws on.
+    
+    The count stays, because knowing the scale is useful and it is the way into
+    the grouped view. It just no longer claims a severity it cannot support.
+  */
+  if (warnTotal) badges.logs = { text: compact(warnTotal), kind: 'plain' };
+  // The badge counts fallbacks, not rejections - a nav badge lit by the guard
+  // doing its job is a badge you learn to ignore.
+  if (djFellBack != null && djFellBackPct != null && hours >= DJ_MIN_WINDOW_HOURS && djFellBackPct >= DJ_FELLBACK_WARN)
+    badges.rad = { text: String(djFellBack), kind: 'warn' };
   if (recsPct != null && recsPct >= RECS_DEGRADED_WARN) badges.recs = { text: `${Math.round(recsPct)}%`, kind: 'warn' };
 
   const bad = open.filter((s) => s.sev === 'bad').length;
@@ -839,6 +890,20 @@ const reasonShort = (reason: string) =>
         : reason === 'not_found'
           ? 'Backend returned 404 - the admin rate limiter, a role below the route, or migration 0003.'
           : 'The source returned an error.';
+
+/**
+ * Share of DJ breaks that fell back to a canned line.
+ *
+ * Same MIN_SAMPLE floor as the rejection rate and for the same reason: at ~44
+ * breaks a day a 6h window holds barely a dozen, and one bad stretch swings a
+ * percentage into meaninglessness.
+ */
+export function fellBackPct(rows: any[]): number | null {
+  const total = rows.reduce((a, r) => a + Number(r.n ?? 0), 0);
+  if (total < MIN_SAMPLE) return null;
+  const fell = rows.reduce((a, r) => a + Number(r.fellBack ?? 0), 0);
+  return (fell / total) * 100;
+}
 
 /** Null below MIN_SAMPLE: too few events to mean anything, which is not the same as fine. */
 function nonOkPct(rows: any[]) {

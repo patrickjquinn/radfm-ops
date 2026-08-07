@@ -895,26 +895,87 @@ app.get('/ae/dj-lines', async (c) => {
   const gate = requireToken(c.env);
   if (gate) return c.json(gate);
   const hours = clampHours(c.req.query('hours'), 24);
+
+  /**
+   * A session id, or nothing. Never interpolated unvalidated.
+   *
+   * This is the one route where a client-supplied value reaches an SQL string.
+   * Every other query here is fully server-built, which is the whole reason this
+   * BFF is a set of named queries rather than a passthrough - so the one place
+   * that takes a parameter gets an allowlist, not an escape function. Anything
+   * outside [A-Za-z0-9_-] is dropped rather than quoted.
+   */
+  const session = (c.req.query('session') ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+
+  /*
+    Chronological when reading ONE session, newest-first when sampling all of
+    them. The backend's own guidance is that almost every real Rad defect has
+    been diagnosed by reading ten CONSECUTIVE breaks and almost none by reading
+    a chart - and consecutive means in the order the listener heard them, which
+    is the opposite of the order a "latest activity" list wants.
+  */
   const out = await ae(
     c.env,
-    `SELECT blob4 AS text, blob2 AS style, blob3 AS reason,
+    `SELECT blob4 AS text, blob2 AS style, blob3 AS reason, blob5 AS session,
             double4 AS fellBack, double1 AS len, timestamp
      FROM rad_fm_events
      WHERE blob1 = 'dj' AND blob4 != ''
+       ${session ? `AND blob5 = '${session}'` : ''}
        AND timestamp > now() - INTERVAL '${hours}' HOUR
-     ORDER BY timestamp DESC
-     LIMIT 30`
+     ORDER BY timestamp ${session ? 'ASC' : 'DESC'}
+     LIMIT ${session ? 60 : 30}`
   );
   if (out.ok === false) return c.json(out);
   const rows = (out.data?.data ?? []).map((r: any) => ({
     text: String(r.text ?? ''),
     style: String(r.style ?? ''),
+    session: String(r.session ?? ''),
     // Same normalisation as the grouped panel, so a reason reads identically in
     // both places rather than carrying its parameters in one and not the other.
     reason: String(r.reason ?? 'ok').replace(/\s*\(.*$/, '').trim() || 'ok',
     fellBack: Number(r.fellBack ?? 0) > 0,
     len: Number(r.len ?? 0),
     at: String(r.timestamp ?? '')
+  }));
+  return c.json({ ok: true, rows, session: session || null });
+});
+
+/**
+ * Sessions, so a break can be read in the company of the ones around it.
+ *
+ * One line on its own says almost nothing - Rad has no memory beyond the last
+ * four lines of the current session, so the failure modes that matter (a phrase
+ * repeating, an invented shared history, a rotation that stopped rotating) are
+ * only visible ACROSS consecutive breaks to the same listener. A newest-first
+ * list across every listener interleaves sessions and hides exactly that.
+ *
+ * Ordered by most recent activity, and carrying the fallback count so a session
+ * where the listener actually heard canned lines is the one you reach for.
+ */
+app.get('/ae/dj-sessions', async (c) => {
+  const gate = requireToken(c.env);
+  if (gate) return c.json(gate);
+  const hours = clampHours(c.req.query('hours'), 24);
+  const out = await ae(
+    c.env,
+    `SELECT blob5 AS session, count() AS n, sum(double4) AS fellBack,
+            max(timestamp) AS lastAt, min(timestamp) AS firstAt
+     FROM rad_fm_events
+     WHERE blob1 = 'dj' AND blob5 != '' AND blob4 != ''
+       AND timestamp > now() - INTERVAL '${hours}' HOUR
+     GROUP BY session
+     ORDER BY lastAt DESC
+     LIMIT 25`
+  );
+  if (out.ok === false) return c.json(out);
+  const rows = (out.data?.data ?? []).map((r: any) => ({
+    session: String(r.session ?? ''),
+    // Analytics Engine returns counts as STRINGS. Rendering them unconverted
+    // sorts "9" above "10" and concatenates in any arithmetic.
+    n: Number(r.n ?? 0),
+    fellBack: Number(r.fellBack ?? 0),
+    firstAt: String(r.firstAt ?? ''),
+    lastAt: String(r.lastAt ?? '')
   }));
   return c.json({ ok: true, rows });
 });
