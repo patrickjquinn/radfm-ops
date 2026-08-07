@@ -154,6 +154,7 @@ describe('dedupeSignals', () => {
     evidence: '',
     metric: '1',
     source: 'test',
+    action: '',
     sev,
     go: 'overview'
   });

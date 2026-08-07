@@ -157,6 +157,96 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
       </p>
 
       {/*
+        An empty "Open signals" card is a titled box with nothing in it - the
+        commonest state of this page, and the one where it read as broken rather
+        than as calm. The verdict two cards up already says "no signals open", so
+        a second empty frame repeating it is furniture. It renders when there is
+        something in it and not otherwise.
+      */}
+      {signals.length > 0 && (
+      <Panel title="Open signals" meta="ranked by blast radius">
+        {signals.map((s) => (
+          <button
+            key={s.title}
+            type="button"
+            onClick={() => ctx.go(s.go)}
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '12px 16px',
+              alignItems: 'flex-start',
+              padding: '14px 0',
+              cursor: 'pointer',
+              width: '100%',
+              textAlign: 'left',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: LINE.row
+            }}
+          >
+            {/* Severity is never colour alone: a dot, a metric colour and the wording all carry it. */}
+            <span
+              style={{
+                ...dot(s.sev === 'bad' ? C.bad : s.sev === 'warn' ? C.warn : 'rgba(255,255,255,0.3)', s.sev === 'bad'),
+                marginTop: 6,
+                alignSelf: 'flex-start'
+              }}
+            />
+            <div style={{ minWidth: 0, flex: '1 1 300px' }}>
+              <div style={{ font: `500 14px/1.35 ${FONT.text}`, letterSpacing: '-0.008em', color: '#fff' }}>{s.title}</div>
+              <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.55)', marginTop: 3 }}>
+                {s.evidence}
+              </div>
+              {/*
+                What to do, separated from what is true.
+                
+                Every signal used to end at its evidence, so the page named a
+                fault and left you with it. These are two different sentences and
+                they get two different treatments - the finding recedes, the step
+                you take is the one in white.
+              */}
+              {s.action && (
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    marginTop: 8,
+                    font: `400 12.5px/1.5 ${FONT.text}`,
+                    color: 'rgba(255,255,255,0.88)'
+                  }}
+                >
+                  <span style={{ color: C.t3, flex: 'none', font: `500 10px/1.8 ${FONT.mono}`, letterSpacing: '0.1em' }}>
+                    DO
+                  </span>
+                  <span>{s.action}</span>
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 'none' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div
+                  style={{
+                    ...num,
+                    font: `500 14px/1.2 ${FONT.mono}`,
+                    color: s.sev === 'bad' ? C.bad : s.sev === 'warn' ? C.warn : C.t2
+                  }}
+                >
+                  {s.metric}
+                </div>
+                <div style={{ font: `400 10px/1.5 ${FONT.mono}`, color: C.t3, marginTop: 3 }}>
+                  {s.source}
+                </div>
+              </div>
+              <span style={{ color: 'rgba(255,255,255,0.3)', display: 'flex' }}>
+                <Icon name="chevron.right" size={11} />
+              </span>
+            </div>
+          </button>
+        ))}
+      </Panel>
+      )}
+
+      {/*
         Three separate cards with real space between them, not cells fused into
         the hero by hairlines. Each is a distinct object you can look at on its
         own, which is what makes a tvOS layout calm: things sit apart rather than
@@ -320,66 +410,6 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
 
       {!demo && signals.length >= 2 && (
         <Narrative signals={signals} verdict={verdict.title} hours={ctx.hours} />
-      )}
-
-      {/*
-        An empty "Open signals" card is a titled box with nothing in it - the
-        commonest state of this page, and the one where it read as broken rather
-        than as calm. The verdict two cards up already says "no signals open", so
-        a second empty frame repeating it is furniture. It renders when there is
-        something in it and not otherwise.
-      */}
-      {signals.length > 0 && (
-      <Panel title="Open signals" meta="ranked by blast radius">
-        {signals.map((s) => (
-          <button
-            key={s.title}
-            type="button"
-            onClick={() => ctx.go(s.go)}
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '12px 16px',
-              alignItems: 'center',
-              padding: '14px 0',
-              cursor: 'pointer',
-              width: '100%',
-              textAlign: 'left',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: LINE.row
-            }}
-          >
-            {/* Severity is never colour alone: a dot, a metric colour and the wording all carry it. */}
-            <span style={dot(s.sev === 'bad' ? C.bad : s.sev === 'warn' ? C.warn : 'rgba(255,255,255,0.3)', s.sev === 'bad')} />
-            <div style={{ minWidth: 0, flex: '1 1 300px' }}>
-              <div style={{ font: `500 14px/1.35 ${FONT.text}`, letterSpacing: '-0.008em', color: '#fff' }}>{s.title}</div>
-              <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.55)', marginTop: 3 }}>
-                {s.evidence}
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 'none' }}>
-              <div style={{ textAlign: 'right' }}>
-                <div
-                  style={{
-                    ...num,
-                    font: `500 14px/1.2 ${FONT.mono}`,
-                    color: s.sev === 'bad' ? C.bad : s.sev === 'warn' ? C.warn : C.t2
-                  }}
-                >
-                  {s.metric}
-                </div>
-                <div style={{ font: `400 10px/1.5 ${FONT.mono}`, color: C.t3, marginTop: 3 }}>
-                  {s.source}
-                </div>
-              </div>
-              <span style={{ color: 'rgba(255,255,255,0.3)', display: 'flex' }}>
-                <Icon name="chevron.right" size={11} />
-              </span>
-            </div>
-          </button>
-        ))}
-      </Panel>
       )}
 
       <ServiceState

@@ -79,6 +79,19 @@ export type Signal = {
   evidence: string;
   metric: string;
   source: string;
+  /**
+   * The next step, in the imperative, naming where to go and what would tell you
+   * which of the likely causes it is.
+   *
+   * This field did not exist. Every signal stated a finding and stopped, so the
+   * page could say "Degraded - 1 signal open" and leave an operator with the
+   * fault, the count, the source and no idea what to do at 3am. Evidence answers
+   * "what is true"; this answers "what now", and they are different sentences.
+   *
+   * It is not allowed to be "investigate" or "monitor this". If the honest answer
+   * is that nothing here can fix it, say that and say who can.
+   */
+  action: string;
   sev: 'bad' | 'warn' | 'info';
   go: ViewId;
 };
@@ -227,6 +240,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
           : '',
       metric: 'unavailable',
       source: u.label,
+      action: `Open ${u.label} and read the reason it prints. A 404 has three causes and the API will not say which - the per-IP admin rate limiter is much the likeliest if this worked a minute ago, so reload once before assuming worse.`,
       sev: 'warn',
       go: u.go
     });
@@ -246,6 +260,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         'Every /admin/* panel goes to "unavailable" when it lapses. Cloudflare Access cannot refresh it - it is a Rad.FM JWT signed with the backend\u2019s secret, which Cloudflare does not hold. Mint a new one (README § Owner token), or land the Access-JWT change and retire it.',
       metric: expiringInDays <= 0 ? 'expired' : `${expiringInDays}d`,
       source: 'ops Worker',
+      action:
+        'Mint a new Rad.FM JWT (README, Owner token) and paste it into the sidebar field. Nothing renews this for you - the Access session refreshes, this does not.',
       sev: expiringInDays <= 3 ? 'bad' : 'warn',
       go: 'overview'
     });
@@ -259,6 +275,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         'Ingestion lags - a datapoint can take over a minute to become queryable - and writes are fire-and-forget, so one empty query is not proof a code path is cold. Check the binding is deployed before concluding anything.',
       metric: 'unverified',
       source: 'day-one check',
+      action:
+        'Confirm the Analytics Engine binding is deployed on the backend before treating any Rad or Recommendations panel as authoritative. Do not conclude a code path is cold from one empty query.',
       sev: 'info',
       go: 'rad'
     });
@@ -305,6 +323,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       evidence: `Non-ok share is ${Math.round(djPct)}% against a ~14% baseline. The guard is rejecting more takes, and regressions here are otherwise only detectable by listening to the radio.`,
       metric: `${Math.round(djPct)}%`,
       source: 'Analytics Engine',
+      action:
+        'Open Rad and read the "reached a listener" column, not the rejection counts. A reason rejected often that reached nobody is harmless; any reason with a non-zero reached count is the one costing listeners.',
       sev: 'warn',
       go: 'rad'
     });
@@ -321,6 +341,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         'A dead player, not a degraded one. These do not show up as "degraded" - the fallback did not rescue them, it returned nothing. Check poolSource for the cause.',
       metric: String(recsZero),
       source: 'Analytics Engine',
+      action:
+        'Open Recommendations and read "Why the pool collapsed". error:validation is a caller bug and the request never got in; error:deadline is upstream slowness and is expected at roughly 2%. Those need opposite responses.',
       sev: 'bad',
       go: 'recs'
     });
@@ -332,6 +354,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       evidence: 'The orchestrator is degrading gracefully, so nothing throws and nothing alerts.',
       metric: `${Math.round(recsPct)}%`,
       source: 'Analytics Engine',
+      action:
+        'Open Recommendations and check whether the live pool is empty or merely small. An empty live pool is a fault; a small one is what this system normally produces.',
       sev: 'warn',
       go: 'recs'
     });
@@ -343,6 +367,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       evidence: 'The insert has regressed. The recommender’s "recently played" exclusion becomes arbitrary as this climbs.',
       metric: missingPlayedAt.toLocaleString(),
       source: 'D1',
+      action:
+        'Nothing here can fix this - it is a write-path regression in the backend. Report the count and the window to the backend team; this dashboard holds no D1 binding by design.',
       sev: 'bad',
       go: 'overview'
     });
@@ -359,6 +385,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         'Failures log as warnings, so nothing throws and nothing alerts. This is the 1,094-warning bug’s signature.',
       metric: `${Math.round(fillRate * 100)}%`,
       source: 'D1 · setlists',
+      action:
+        'Open Logs and find the setlist rows in the warning groups. These failures never throw, so the grouped warnings are the only place they appear at all.',
       sev: 'warn',
       go: 'logs'
     });
@@ -370,6 +398,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       evidence: 'The platform’s headline Errors metric excludes 4xx entirely, so this does not appear there.',
       metric: fourxxTotal.toLocaleString(),
       source: 'Observability',
+      action:
+        'Open Traffic and read the 4xx table by route. One route dominating is usually a client bug rather than a backend one; spread across many routes points at auth.',
       sev: 'bad',
       go: 'traffic'
     });
@@ -401,6 +431,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         'No plays from any listener in three hours. Every station is idle at once, which points at the serving path rather than at one user. Nothing throws when nobody is being played to.',
       metric: 'silent',
       source: 'Play log',
+      action:
+        'Play something on rad.fm yourself first - that separates "the serving path is broken" from "nobody happens to be listening". Every station being idle at once points at the path, not at a user.',
       sev: 'bad',
       go: 'listening'
     });
@@ -427,6 +459,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         'The play log is receiving on other days, so this is not an instrumentation gap. Nothing throws when nobody listens, so no engineering panel will show this.',
       metric: '0',
       source: 'Analytics Engine',
+      action:
+        'Play something on rad.fm yourself. The log is receiving on other days, so if your own play lands here the serving path is fine and this is genuinely nobody listening.',
       sev: 'bad',
       go: 'listening'
     });
@@ -447,6 +481,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
         'Local says premium, RevenueCat says lapsed. A stale cache in this direction once stripped paid features from people who were still paying.',
       metric: String(driftCount),
       source: 'D1 + RevenueCat',
+      action:
+        'Open Users, filter to Needs attention, and check each account against RevenueCat before changing anything. Somebody is being charged for something they cannot use.',
       sev: 'bad',
       go: 'users'
     });
@@ -468,6 +504,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       evidence: `$${spendToday.toFixed(2)} of the $${DAILY_LIMIT}/day gateway limit. At the limit the gateway returns 429 and the generated panels go dark.`,
       metric: `$${spendToday.toFixed(2)}`,
       source: 'AI Gateway',
+      action:
+        'Open Cost and check the run rate against the cap. Either raise the gateway limit or accept that the generated panels go dark at it - they degrade to unavailable, they do not show wrong numbers.',
       sev: spendToday >= DAILY_LIMIT * 0.8 ? 'bad' : 'warn',
       go: 'cost'
     });
@@ -542,9 +580,27 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
           : open.length
             ? `Healthy - ${open.length} signal${open.length === 1 ? '' : 's'} open`
             : 'Healthy - no signals open',
-        sub: open.length
-          ? 'Every source answered. The signals below are what they said.'
-          : 'Every source read cleanly and none of them is reporting a problem.',
+        /*
+          Name the thing when there is one thing.
+          
+          "Degraded - 1 signal open" is a count, and a count is not an answer:
+          it left an operator knowing something was wrong and not what. The
+          headline stays a count because it also has to work at five, but the
+          line under it now says which, and the card is directly beneath.
+        */
+        /*
+          The title only. This carried the full action too, which then appeared
+          again word for word in the card sixty pixels below - the caption's job
+          is to say WHICH signal, and the card's job is to say what to do about
+          it. Saying both twice made the caption long enough to skip.
+        */
+        sub: bad
+          ? open.filter((x) => x.sev === 'bad').length === 1
+            ? `${open.find((x) => x.sev === 'bad')!.title}.`
+            : 'The failing signals are listed first below, ranked by blast radius.'
+          : open.length
+            ? 'Nothing is failing. The open signals below are worth reading, not chasing.'
+            : 'Every source read cleanly and none of them is reporting a problem.',
         stats: [
           { value: fourxxTotal != null ? compact(fourxxTotal) : '-', label: '4xx', tone: fourxxTotal && fourxxTotal > 1000 ? 'bad' : 'plain' },
           {

@@ -193,13 +193,13 @@ export const entitlement = (s: Scenario) => {
 export const signals = (s: Scenario) =>
   s === 'incident'
     ? [
-        { title: '4xx spike on /users/auth/refresh', evidence: '401 responses, sustained 42 min. Headline Errors still reads 0 - 4xx is excluded from it.', metric: '2,847', source: 'Observability', sev: 'bad' as const, go: 'traffic' as const },
-        { title: 'Setlist fill rate below baseline', evidence: 'Failures log as warnings, so nothing throws and nothing alerts. This is the 1,094-warning bug’s signature.', metric: '62%', source: 'D1 · setlists', sev: 'warn' as const, go: 'logs' as const },
-        { title: 'DJ degeneracy rising', evidence: 'Non-ok share up from a ~14% baseline to 36% over 24h. The guard is rejecting more takes.', metric: '36%', source: 'Analytics Engine', sev: 'warn' as const, go: 'rad' as const },
-        { title: 'Analytics Engine never read', evidence: 'Instrumented and writing, but no query has ever confirmed datapoints land. Needs a scoped API token.', metric: 'unverified', source: 'day-one check', sev: 'info' as const, go: 'rad' as const }
+        { title: '4xx spike on /users/auth/refresh', evidence: '401 responses, sustained 42 min. Headline Errors still reads 0 - 4xx is excluded from it.', metric: '2,847', source: 'Observability', action: 'Open Traffic and read the 4xx table by route. One route dominating is usually a client bug rather than a backend one; spread across many routes points at auth.', sev: 'bad' as const, go: 'traffic' as const },
+        { title: 'Setlist fill rate below baseline', evidence: 'Failures log as warnings, so nothing throws and nothing alerts. This is the 1,094-warning bug’s signature.', metric: '62%', source: 'D1 · setlists', action: 'Open Logs and find the setlist rows in the warning groups. These failures never throw, so the grouped warnings are the only place they appear.', sev: 'warn' as const, go: 'logs' as const },
+        { title: 'DJ degeneracy rising', evidence: 'Non-ok share up from a ~14% baseline to 36% over 24h. The guard is rejecting more takes.', metric: '36%', source: 'Analytics Engine', action: 'Open Rad and read the "reached a listener" column, not the rejection counts. A reason rejected often that reached nobody is harmless.', sev: 'warn' as const, go: 'rad' as const },
+        { title: 'Analytics Engine never read', evidence: 'Instrumented and writing, but no query has ever confirmed datapoints land. Needs a scoped API token.', metric: 'unverified', source: 'day-one check', action: 'Confirm the Analytics Engine binding is deployed on the backend before treating any Rad or Recommendations panel as authoritative.', sev: 'info' as const, go: 'rad' as const }
       ]
     : [
-        { title: 'Analytics Engine never read', evidence: 'Instrumented and writing, but no query has ever confirmed datapoints land. Needs a scoped API token.', metric: 'unverified', source: 'day-one check', sev: 'info' as const, go: 'rad' as const }
+        { title: 'Analytics Engine never read', evidence: 'Instrumented and writing, but no query has ever confirmed datapoints land. Needs a scoped API token.', metric: 'unverified', source: 'day-one check', action: 'Confirm the Analytics Engine binding is deployed on the backend before treating any Rad or Recommendations panel as authoritative.', sev: 'info' as const, go: 'rad' as const }
       ];
 
 export const tier1 = [
