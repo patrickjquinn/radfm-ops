@@ -415,6 +415,138 @@ export const useConfig = (enabled: boolean) =>
  * same handler that performs the write - that is the whole point of the table,
  * and a client that writes the audit row separately can fail between the two.
  */
+/* ── Promoted music ────────────────────────────────────────────────────────── */
+
+/**
+ * All four promotion routes are `operator`, not `viewer`.
+ *
+ * Reading a dashboard and deciding what listeners hear are different privileges,
+ * and the backend answers a viewer with a bare 404 - indistinguishable from the
+ * rate limiter and from a missing migration. So the client must not call these
+ * without `can.operate`, exactly as it must not call /admin/users/lookup: a 404
+ * we caused by asking a question we were not entitled to ask would be reported
+ * on screen as a source that could not be read.
+ */
+export type PromoSearchResult = {
+  appleId: string;
+  name: string;
+  artistName?: string;
+  isrc?: string | null;
+  releaseDate?: string | null;
+  genres: string[];
+  artwork?: string | null;
+};
+
+export type Promotion = {
+  id: number;
+  kind: 'song' | 'artist';
+  name: string;
+  artistName?: string;
+  targetGenres: string[];
+  /** track | sibling | genre - see PROMOTIONS.md. `genre` means guessed sequencing. */
+  featureSource: 'track' | 'sibling' | 'genre';
+  weight: number;
+  dailyCapPerUser: number;
+  active: boolean;
+  retiredAt: string | null;
+  served: number;
+  listeners: number;
+  createdAt: string;
+  artwork?: string | null;
+};
+
+export const usePromotionSearch = (q: string, kind: 'song' | 'artist', enabled: boolean) =>
+  lift<{ songs: PromoSearchResult[]; artists: PromoSearchResult[] }>(
+    useQuery({
+      queryKey: ['promo-search', q, kind],
+      queryFn: () => backendGet(`/admin/promotions/search?q=${encodeURIComponent(q)}&type=${kind}&limit=12`),
+      // Two characters is a 400 on the backend. Not asking is better than
+      // rendering an error the operator caused by typing one letter.
+      enabled: enabled && q.trim().length >= 2,
+      ...common
+    })
+  );
+
+export const usePromotions = (includeRetired: boolean, enabled: boolean) =>
+  lift<{ promotions: Promotion[]; checkedAt: string }>(
+    useQuery({
+      queryKey: ['promotions', includeRetired],
+      queryFn: () => backendGet(`/admin/promotions${includeRetired ? '?includeRetired=1' : ''}`),
+      enabled,
+      ...common
+    })
+  );
+
+/** Shared POST plumbing. Surfaces the backend's own reason text, never a generic failure. */
+async function promoPost(path: string, body?: unknown) {
+  const res = await fetch(`/api/backend${path}`, {
+    method: 'POST',
+    headers: { 'X-Rad-Jwt': getJwt(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {})
+  });
+  const text = await res.text();
+  const parsed = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    /*
+      The API's reasons are specific and each one is actionable, so they are
+      carried through rather than flattened. A 400 for unresolvable targeting in
+      particular has to reach the operator verbatim - "no target genres" means
+      the promotion would match NOTHING rather than everything, and a generic
+      "failed" would send them to look at the wrong thing entirely.
+    */
+    const reason =
+      res.status === 409
+        ? 'already_promoted'
+        : res.status === 404
+          ? 'not_in_storefront'
+          : (parsed?.error ?? `http_${res.status}`);
+    throw Object.assign(new Error(reason), { reason, detail: parsed?.detail ?? parsed?.message });
+  }
+  return parsed;
+}
+
+export const useCreatePromotion = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      kind: 'song' | 'artist';
+      appleId: string;
+      storefront?: string;
+      targetGenres?: string[];
+      weight?: number;
+      dailyCapPerUser?: number;
+    }) => promoPost('/admin/promotions', body),
+    // The audit view too: a write that does not appear there is a bug in the
+    // audit trail, and this is the first place it would be visible.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['promotions'] });
+      qc.invalidateQueries({ queryKey: ['admin-audit'] });
+    }
+  });
+};
+
+export const useRetirePromotion = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => promoPost(`/admin/promotions/${id}/retire`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['promotions'] });
+      qc.invalidateQueries({ queryKey: ['admin-audit'] });
+    }
+  });
+};
+
+/**
+ * Apple artwork URLs are templates carrying literal `{w}` and `{h}`.
+ *
+ * Rendered unsubstituted the browser requests a URL containing braces and gets
+ * nothing, so the card falls back to its placeholder and the whole picker looks
+ * broken. Asked for at 2x the display size because these sit at 56-64px and a
+ * 1x request is visibly soft on any retina display.
+ */
+export const artworkUrl = (tpl: string | null | undefined, px: number): string | null =>
+  tpl ? tpl.replace('{w}', String(px * 2)).replace('{h}', String(px * 2)) : null;
+
 export const useSetConfig = () => {
   const qc = useQueryClient();
   return useMutation({

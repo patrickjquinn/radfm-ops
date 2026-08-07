@@ -4,7 +4,16 @@ import { Icon } from '../icons';
 import { reasonText, type Loaded } from '../lib/api';
 
 /** Section header: a label and, always, where the number came from. */
-export function SectionHead({ title, meta }: { title: string; meta?: string }) {
+/**
+ * `meta` takes a node, not just a string.
+ *
+ * A section's right-hand slot is where a scope note lives ("24h window",
+ * "newest first"), and occasionally where a control over that scope belongs -
+ * the promotions list toggles retired rows there. Widening the type keeps that
+ * control beside the thing it scopes rather than inventing a second row of
+ * chrome above the panel.
+ */
+export function SectionHead({ title, meta }: { title: string; meta?: React.ReactNode }) {
   return (
     <div
       style={{
@@ -421,7 +430,7 @@ export function Generated({
   children
 }: {
   model: string;
-  meta?: string;
+  meta?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -577,7 +586,7 @@ export function Panel({
   pad = true
 }: {
   title: string;
-  meta?: string;
+  meta?: React.ReactNode;
   children: React.ReactNode;
   pad?: boolean;
 }) {

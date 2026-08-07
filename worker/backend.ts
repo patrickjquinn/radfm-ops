@@ -17,11 +17,18 @@ import type { Ctx } from './types';
  *     404s for everyone, owner included. If a known admin sees 404, check the
  *     migration before debugging the client.
  *
- * An allowlist, not a passthrough, and split by method. Reads are broad; the only
- * write that can cross this boundary is a Tier 1 config value. Every other
- * mutation - grant premium, revoke, force reconcile, rollback - is rejected here
- * as well as being absent from the UI, so enabling one is a deliberate act in two
- * places rather than an oversight in one.
+ * An allowlist, not a passthrough, and split by method. Reads are broad. Two
+ * classes of write can cross: a Tier 1 config value, and promoted music. Every
+ * other mutation - grant premium, revoke, force reconcile, rollback - is rejected
+ * here as well as being absent from the UI, so enabling one is a deliberate act
+ * in two places rather than an oversight in one.
+ *
+ * Promotions are the first write that changes what a LISTENER experiences rather
+ * than how the system is configured, which is a different kind of authority and
+ * worth naming as one. They are allowed because the backend enforces `operator`
+ * on them, audits every attempt including the refusals, and because the feature
+ * competes on merit rather than overriding anything - it cannot beat a dislike,
+ * a blacklist or an era brief at any weight.
  */
 
 const app = new Hono<Ctx>();
@@ -47,8 +54,19 @@ const ALLOWED_GET = [
    * by construction, so the narrower rule bought nothing.
    */
   /^\/admin\/metrics\/[a-z-]+$/,
-  /^\/admin\/config$/
+  /^\/admin\/config$/,
+  /^\/admin\/promotions$/,
+  /^\/admin\/promotions\/search$/
 ];
+
+/**
+ * Promoted music. Both are `operator` on the backend and both audit.
+ *
+ * `retire` rather than delete, matching the API: the impression history is the
+ * only record of what was actually served, and the same act can be promoted
+ * again later under a new campaign.
+ */
+const ALLOWED_POST = [/^\/admin\/promotions$/, /^\/admin\/promotions\/\d+\/retire$/];
 
 /**
  * Tier 1 runtime config only, and `operator` is enforced on the backend side -
@@ -59,8 +77,8 @@ const ALLOWED_PUT = [/^\/admin\/config\/[A-Z0-9_]+$/];
 
 app.all('/*', async (c) => {
   const method = c.req.method;
-  if (method !== 'GET' && method !== 'PUT') {
-    return c.json({ error: 'read_only', detail: 'Mutations are Phase 4 - reads must earn trust first' }, 405);
+  if (method !== 'GET' && method !== 'PUT' && method !== 'POST') {
+    return c.json({ error: 'read_only', detail: 'Only config writes and promotions may cross this proxy' }, 405);
   }
 
   // The operator's own Rad.FM JWT, in order of preference:
@@ -91,7 +109,7 @@ app.all('/*', async (c) => {
   if (!jwt && !accessJwt) return c.json({ error: 'no_backend_token' }, 401);
 
   const path = new URL(c.req.url).pathname.replace(/^\/api\/backend/, '');
-  const allowed = method === 'GET' ? ALLOWED_GET : ALLOWED_PUT;
+  const allowed = method === 'GET' ? ALLOWED_GET : method === 'POST' ? ALLOWED_POST : ALLOWED_PUT;
   if (!allowed.some((re) => re.test(path))) return c.json({ error: 'not_allowed' }, 404);
 
   const target = new URL(path, c.env.BACKEND_ORIGIN);
@@ -110,9 +128,9 @@ app.all('/*', async (c) => {
       // Sent unconditionally and harmlessly ignored until that application exists,
       // so the backend side can land without a redeploy here.
       ...(accessJwt ? { 'Cf-Access-Token': accessJwt } : {}),
-      ...(method === 'PUT' ? { 'Content-Type': 'application/json' } : {})
+      ...(method === 'PUT' || method === 'POST' ? { 'Content-Type': 'application/json' } : {})
     },
-    body: method === 'PUT' ? await c.req.text() : undefined
+    body: method === 'PUT' || method === 'POST' ? await c.req.text() : undefined
   });
 
   // Diagnostics on failure only. A 404 from /admin/* is deliberately ambiguous

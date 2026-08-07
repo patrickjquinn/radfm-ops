@@ -18,6 +18,7 @@ import Users from './views/Users';
 import Stations from './views/Stations';
 import Config from './views/Config';
 import Audit from './views/Audit';
+import Promoted from './views/Promoted';
 
 export type ViewId =
   | 'overview'
@@ -31,7 +32,8 @@ export type ViewId =
   | 'users'
   | 'stations'
   | 'config'
-  | 'audit';
+  | 'audit'
+  | 'promoted';
 export type Range = '6h' | '24h' | '3d' | '7d' | '30d' | '90d';
 
 export const RANGE_HOURS: Record<Range, number> = {
@@ -75,6 +77,9 @@ const DATA_RANGES: Range[] = ['7d', '30d', '90d'];
  * scope note in this product.
  */
 const FIXED_SCOPE: Partial<Record<ViewId, string>> = {
+  // Lifetime impression counts and a live catalogue search. Neither is windowed,
+  // so a range control here would be the inert kind this product just removed.
+  promoted: 'current state',
   users: 'current state',
   stations: 'current state',
   config: 'current state',
@@ -125,7 +130,11 @@ const TITLES: Record<ViewId, [string, string]> = {
   users: ['Users and entitlement', 'Local state and RevenueCat shown side by side. Disagreement is the bug returning.'],
   stations: ['Stations', 'A content browser, not a leaderboard - every station is user-generated and subscriber counts are flat.'],
   config: ['Config', 'What can be changed at runtime, what must go through a PR, and what is deliberately absent.'],
-  audit: ['Audit', 'Append-only record of every admin action.']
+  audit: ['Audit', 'Append-only record of every admin action.'],
+  promoted: [
+    'Promoted music',
+    'Music pushed into the candidate pool. It competes for a slot - it is never given one.'
+  ]
 };
 
 const NAV: { group: string; items: { id: ViewId; label: string; icon: IconName }[] }[] = [
@@ -151,7 +160,8 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: IconName }
     group: 'Domain',
     items: [
       { id: 'rad', label: 'Rad', icon: 'mic.fill' },
-      { id: 'recs', label: 'Recommendations', icon: 'dot.radiowaves.left.and.right' }
+      { id: 'recs', label: 'Recommendations', icon: 'dot.radiowaves.left.and.right' },
+      { id: 'promoted', label: 'Promoted', icon: 'playlist' }
     ]
   },
   {
@@ -190,7 +200,7 @@ export type Ctx = {
  */
 const VIEW_IDS: ViewId[] = [
   'overview', 'traffic', 'logs', 'listening', 'growth', 'cost',
-  'rad', 'recs', 'users', 'stations', 'config', 'audit'
+  'rad', 'recs', 'promoted', 'users', 'stations', 'config', 'audit'
 ];
 const viewFromPath = (): ViewId => {
   const seg = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
@@ -821,6 +831,7 @@ export default function App() {
           {view === 'cost' && <Cost ctx={ctx} />}
           {view === 'rad' && <Rad ctx={ctx} />}
           {view === 'recs' && <Recs ctx={ctx} />}
+          {view === 'promoted' && <Promoted ctx={ctx} />}
           {view === 'users' && <Users ctx={ctx} />}
           {view === 'stations' && <Stations ctx={ctx} />}
           {view === 'config' && <Config ctx={ctx} />}
