@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { C, CARD, FONT, LINE, MOTION, GAP, focusLift, num } from '../theme';
 import { Icon } from '../icons';
-import { Callout, Panel, Prose, Skel, SkelRows, Source } from '../components/primitives';
+import { Bar, Callout, Panel, Prose, Skel, SkelRows, Source, StatGrid } from '../components/primitives';
 import {
   artworkUrl,
   useCreatePromotion,
@@ -21,14 +21,12 @@ import {
  * everything else competes in. It competes: it is not given a guaranteed slot,
  * and it cannot beat a dislike, a station blacklist or an era brief at any
  * weight. That is the difference between "they played me something new" and
- * "they ignored me", and it is enforced in the recommendation path rather than
- * by convention here.
+ * "they ignored me", and it is enforced in the recommendation path, not here.
  *
- * Every panel on this page is gated on `can.operate`. Reading a dashboard and
- * deciding what listeners hear are different privileges, and the backend answers
- * a viewer with a bare 404 that is indistinguishable from the rate limiter - so
- * a viewer who reached these calls would see "source could not be read" and go
- * looking for an outage that does not exist.
+ * Every call is gated on `can.operate`. The backend answers a viewer with a bare
+ * 404 that is indistinguishable from the rate limiter, so a viewer who reached
+ * these would see "source could not be read" and go hunting an outage that is
+ * really a permission.
  */
 export default function Promoted({ ctx }: { ctx: Ctx }) {
   const operator = ctx.can.operate;
@@ -45,6 +43,15 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
   if (!operator) return <NotOperator />;
 
   const results = search.state === 'ok' ? (kind === 'song' ? search.data.songs : search.data.artists) : [];
+  const promos = list.state === 'ok' ? list.data.promotions : [];
+  const active = promos.filter((p) => p.active);
+  /*
+    Already-promoted ids, so a result that would 409 says so instead of offering
+    a button that cannot work. The API's refusal is correct and the error copy
+    handles it, but an operator should not have to trigger an error to discover
+    a fact the page already has on screen.
+  */
+  const promotedIds = new Set(active.map((p) => p.appleId));
 
   return (
     <div style={{ display: 'grid', gap: GAP }}>
@@ -55,12 +62,52 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
         fires on the genres a pool actually came back with, not on anything declared up front.
       </Callout>
 
+      {/*
+        The campaign at a glance. Reach leads because it is the question the rest
+        of the page cannot answer from a single row: a promotion can look busy
+        and touch almost nobody.
+      */}
+      {list.state === 'ok' && active.length > 0 && (
+        <StatGrid
+          min={190}
+          items={[
+            {
+              label: 'Active',
+              value: String(active.length),
+              context: `${promos.length - active.length} retired`,
+              tone: 'plain'
+            },
+            {
+              label: 'Served',
+              value: active.reduce((a, p) => a + p.served, 0).toLocaleString(),
+              context: 'impressions, all campaigns',
+              tone: 'plain'
+            },
+            {
+              label: 'Listeners reached',
+              value: active.reduce((a, p) => a + p.listeners, 0).toLocaleString(),
+              // Deliberately not deduplicated across promotions: one person
+              // reached by two campaigns is two rows in the impression table and
+              // we cannot tell from here that it is the same person.
+              context: 'summed per promotion, not unique people',
+              tone: 'plain'
+            },
+            {
+              label: 'On genre alone',
+              value: String(active.filter((p) => p.featureSource === 'genre').length),
+              context: 'sequencing is approximate',
+              tone: active.some((p) => p.featureSource === 'genre') ? 'warn' : 'plain'
+            }
+          ]}
+        />
+      )}
+
       {/* ── Find something to promote ─────────────────────────────────────── */}
       <Panel
         title="Find music"
         meta={kind === 'song' ? 'Apple catalogue · exact recording' : 'Apple catalogue · a rotating handful of top songs'}
       >
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', padding: '4px 0 14px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', padding: '4px 0 16px' }}>
           <div
             style={{
               display: 'flex',
@@ -133,26 +180,27 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
           </form>
         </div>
 
-        {/*
-          Two characters is a 400 on the backend, so the empty and one-character
-          states say what to do rather than rendering a failure the operator
-          caused by starting to type.
-        */}
         {q.trim().length < 2 ? (
           <Empty text="Type at least two characters and press enter. Search runs against the Apple catalogue on the backend, so this dashboard never holds an Apple token." />
         ) : (
           <Source data={search} what="Catalogue search" skeleton={<SkelCards />}>
             {() =>
               results.length ? (
-                <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gap: 12 }}>
                   {results.map((r) => (
                     <ResultCard
                       key={r.appleId}
                       r={r}
                       kind={kind}
+                      alreadyPromoted={promotedIds.has(r.appleId)}
                       busy={create.isPending}
-                      onPromote={() =>
-                        create.mutate({ kind, appleId: r.appleId, targetGenres: r.genres?.length ? r.genres : undefined })
+                      onPromote={(opts) =>
+                        create.mutate({
+                          kind,
+                          appleId: r.appleId,
+                          targetGenres: r.genres?.length ? r.genres : undefined,
+                          ...opts
+                        })
                       }
                     />
                   ))}
@@ -188,13 +236,18 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
         }
       >
         <Source data={list} what="Promotions" skeleton={<SkelRows rows={3} cols={[null, 90, 90, 80]} />}>
-          {(d) =>
-            d.promotions.length ? (
-              <div style={{ display: 'grid', gap: 10 }}>
+          {(d) => {
+            // The reach bar is relative to the busiest campaign, so it answers
+            // "which of these is actually landing" rather than implying a target
+            // nobody set. One promotion gets no bar - there is nothing to compare.
+            const peak = Math.max(...d.promotions.map((p) => p.served), 1);
+            return d.promotions.length ? (
+              <div style={{ display: 'grid', gap: 12 }}>
                 {d.promotions.map((p) => (
                   <PromotionCard
                     key={p.id}
                     p={p}
+                    peak={d.promotions.length > 1 ? peak : 0}
                     busy={retire.isPending}
                     onRetire={() => retire.mutate(p.id)}
                   />
@@ -202,22 +255,13 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
               </div>
             ) : (
               <Empty text={includeRetired ? 'Nothing has ever been promoted.' : 'No active promotions.'} />
-            )
-          }
+            );
+          }}
         </Source>
 
         {retire.isError && <WriteError err={retire.error} />}
 
-        <div style={{ paddingTop: 14 }}>
-          <Prose max={80}>
-            Sleeves are missing here because <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>/admin/promotions</code>{' '}
-            returns <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>appleId</code>{' '}
-            but no artwork, and this dashboard holds no Apple token to resolve one - a request is with the backend.
-            Uniformly absent rather than sometimes present: caching the URL when you promote would put sleeves on the
-            ones made in this browser and not the rest, which is harder to read than none at all.
-          </Prose>
-        </div>
-        <div style={{ paddingTop: 10 }}>
+        <div style={{ paddingTop: 16 }}>
           <Prose max={80}>
             <strong style={{ fontWeight: 500, color: C.warnText }}>
               Served and listeners are different numbers.
@@ -237,167 +281,271 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
 
 /* ── Search result ──────────────────────────────────────────────────────── */
 
+type PromoOpts = { weight?: number; dailyCapPerUser?: number };
+
 /**
- * Artwork earns its place here rather than decorating.
+ * A record, presented as one.
  *
- * An operator picking a record from a list of names is choosing from text that
- * looks identical for a remaster, a live version and a covers act with the same
- * title. The sleeve is how you know you got the right one, which is why this is
- * a card with an image rather than a table row.
+ * Artwork is not decoration here: an operator picking from a list of names is
+ * choosing between text that reads identically for a remaster, a live cut and a
+ * covers act with the same title. The sleeve is how you know you got the right
+ * one, so it leads and it is large enough to recognise.
  */
 function ResultCard({
   r,
   kind,
+  alreadyPromoted,
   busy,
   onPromote
 }: {
   r: PromoSearchResult;
   kind: 'song' | 'artist';
+  alreadyPromoted: boolean;
   busy: boolean;
-  onPromote: () => void;
+  onPromote: (opts: PromoOpts) => void;
 }) {
-  const art = artworkUrl(r.artwork, 64);
+  const [open, setOpen] = useState(false);
+  const [weight, setWeight] = useState(1);
+  const [cap, setCap] = useState(2);
+  const noGenres = !r.genres?.length;
+
   return (
     <div
-      style={{
-        ...CARD,
-        padding: 14,
-        display: 'flex',
-        gap: 14,
-        alignItems: 'center',
-        transition: `transform ${MOTION}, box-shadow ${MOTION}`
-      }}
-      onMouseEnter={(e) => Object.assign(e.currentTarget.style, focusLift(true))}
+      style={{ ...CARD, padding: 16, transition: `transform ${MOTION}, box-shadow ${MOTION}` }}
+      onMouseEnter={(e) => !alreadyPromoted && Object.assign(e.currentTarget.style, focusLift(true))}
       onMouseLeave={(e) => Object.assign(e.currentTarget.style, focusLift(false))}
     >
-      <Art src={art} size={64} round={kind === 'artist'} />
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <Art src={artworkUrl(r.artwork, 72)} size={72} round={kind === 'artist'} />
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ font: `500 14px/1.35 ${FONT.text}`, color: '#fff', letterSpacing: '-0.008em' }}>{r.name}</div>
-        {r.artistName && (
-          <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: C.t2, marginTop: 2 }}>{r.artistName}</div>
-        )}
-        {/*
-          The genres ARE the targeting seed, and a promotion whose genres match
-          no pool it could plausibly land in simply never serves - with nothing
-          in the data afterwards to explain why. The search result carries them,
-          so showing them before the operator commits costs nothing.
-        */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          {r.genres?.length ? (
-            r.genres.map((g) => <GenreChip key={g} g={g} />)
-          ) : (
-            <span style={{ font: `400 11px/1.6 ${FONT.mono}`, color: C.warnText }}>
-              no genres - would be refused, not saved
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ font: `500 15px/1.3 ${FONT.text}`, color: '#fff', letterSpacing: '-0.01em' }}>{r.name}</div>
+          {r.artistName && (
+            <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: C.t2, marginTop: 3 }}>{r.artistName}</div>
+          )}
+          {/*
+            The genres ARE the targeting seed. A promotion whose genres match no
+            pool it could plausibly land in never serves, and nothing in the data
+            afterwards explains why - so they are shown before the operator
+            commits, which the search response makes free.
+          */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
+            {noGenres ? (
+              <span style={{ font: `400 11px/1.6 ${FONT.mono}`, color: C.warnText }}>
+                no genres - this would be refused, not saved
+              </span>
+            ) : (
+              r.genres.map((g) => <GenreChip key={g} g={g} />)
+            )}
+          </div>
+        </div>
+
+        <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {alreadyPromoted ? (
+            // Not a disabled button with a tooltip: the fact is already on this
+            // page, so saying it is cheaper than making them click to find out.
+            <span
+              style={{
+                padding: '7px 13px',
+                borderRadius: 8,
+                font: `500 11.5px/1.2 ${FONT.mono}`,
+                background: 'rgba(63,179,166,0.10)',
+                color: C.ok,
+                border: '1px solid rgba(63,179,166,0.28)'
+              }}
+            >
+              promoted
             </span>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
+                title="Weight and daily cap"
+                style={{
+                  height: 34,
+                  padding: '0 11px',
+                  borderRadius: 8,
+                  border: '1px solid rgba(255,255,255,0.11)',
+                  background: open ? 'rgba(255,255,255,0.06)' : 'transparent',
+                  color: open ? '#fff' : C.t3,
+                  font: `400 11.5px/1 ${FONT.mono}`,
+                  cursor: 'pointer'
+                }}
+              >
+                {weight === 1 && cap === 2 ? 'options' : `×${weight} · ${cap}/day`}
+              </button>
+              <button
+                type="button"
+                disabled={busy || noGenres}
+                onClick={() => onPromote({ weight, dailyCapPerUser: cap })}
+                style={{
+                  height: 34,
+                  padding: '0 16px',
+                  borderRadius: 8,
+                  border: `1px solid ${busy || noGenres ? 'rgba(255,255,255,0.08)' : 'rgba(63,179,166,0.45)'}`,
+                  background: busy || noGenres ? 'rgba(255,255,255,0.03)' : 'rgba(63,179,166,0.14)',
+                  color: busy || noGenres ? C.t3 : C.ok,
+                  font: `500 12.5px/1 ${FONT.text}`,
+                  cursor: busy ? 'wait' : noGenres ? 'not-allowed' : 'pointer',
+                  transition: `background ${MOTION}`
+                }}
+              >
+                {busy ? 'Saving…' : 'Promote'}
+              </button>
+            </>
           )}
         </div>
       </div>
 
-      <button
-        type="button"
-        disabled={busy}
-        onClick={onPromote}
-        style={{
-          flex: 'none',
-          height: 34,
-          padding: '0 15px',
-          borderRadius: 8,
-          border: `1px solid ${busy ? 'rgba(255,255,255,0.08)' : 'rgba(63,179,166,0.45)'}`,
-          background: busy ? 'rgba(255,255,255,0.03)' : 'rgba(63,179,166,0.12)',
-          color: busy ? C.t3 : C.ok,
-          font: `500 12px/1 ${FONT.text}`,
-          cursor: busy ? 'wait' : 'pointer',
-          transition: `background ${MOTION}`
-        }}
-      >
-        {busy ? 'Saving…' : 'Promote'}
-      </button>
+      {/*
+        Campaign controls, behind a click.
+
+        The defaults are the right answer nearly every time, and putting two
+        numeric fields on every row would make a picker look like a form. They
+        appear when someone actually wants them, with the API's own clamps shown
+        rather than enforced silently - a value that gets quietly changed on save
+        is a number you cannot stand behind.
+      */}
+      {open && !alreadyPromoted && (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 18,
+            marginTop: 14,
+            paddingTop: 14,
+            borderTop: LINE.row
+          }}
+        >
+          <Stepper
+            label="Weight"
+            hint="0.1 to 10 · how hard it competes, never a guarantee"
+            value={weight}
+            step={0.5}
+            min={0.1}
+            max={10}
+            onChange={setWeight}
+          />
+          <Stepper
+            label="Daily cap per listener"
+            hint="1 to 20 · verified at 2/2 giving zero further appearances"
+            value={cap}
+            step={1}
+            min={1}
+            max={20}
+            onChange={setCap}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
 /* ── An active or retired promotion ─────────────────────────────────────── */
 
-function PromotionCard({ p, busy, onRetire }: { p: Promotion; busy: boolean; onRetire: () => void }) {
-  // No sleeve here, uniformly - see the Promotion type. The tile stays so the
-  // row keeps the same shape as a search result, and the panel says why once
-  // rather than each card implying its own image failed.
+function PromotionCard({
+  p,
+  peak,
+  busy,
+  onRetire
+}: {
+  p: Promotion;
+  peak: number;
+  busy: boolean;
+  onRetire: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
   const guessed = p.featureSource === 'genre';
+
   return (
     <div
       style={{
         ...CARD,
-        padding: 14,
-        display: 'flex',
-        gap: 14,
-        alignItems: 'center',
-        opacity: p.active ? 1 : 0.55,
+        padding: 16,
+        opacity: p.active ? 1 : 0.5,
         borderColor: guessed && p.active ? 'rgba(224,160,48,0.32)' : 'rgba(255,255,255,0.075)'
       }}
     >
-      <Art src={null} size={56} round={p.kind === 'artist'} />
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <Art src={artworkUrl(p.artwork, 64)} size={64} round={p.kind === 'artist'} />
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
-          <span style={{ font: `500 14px/1.35 ${FONT.text}`, color: '#fff' }}>{p.name}</span>
-          <span style={{ font: `400 11px/1.5 ${FONT.mono}`, color: C.t3 }}>{p.kind}</span>
-          {!p.active && (
-            <span style={{ font: `500 10.5px/1.5 ${FONT.mono}`, color: C.t3 }}>retired</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
+            <span style={{ font: `500 15px/1.3 ${FONT.text}`, color: '#fff', letterSpacing: '-0.01em' }}>{p.name}</span>
+            <span style={{ font: `400 11px/1.5 ${FONT.mono}`, color: C.t3 }}>{p.kind}</span>
+            {!p.active && <span style={{ font: `500 10.5px/1.5 ${FONT.mono}`, color: C.t3 }}>retired</span>}
+          </div>
+          {p.artistName && (
+            <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: C.t2, marginTop: 3 }}>{p.artistName}</div>
           )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9, alignItems: 'center' }}>
+            {(p.targetGenres ?? []).map((g) => (
+              <GenreChip key={g} g={g} />
+            ))}
+            <FeatureSource value={p.featureSource} />
+          </div>
         </div>
-        {p.artistName && (
-          <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: C.t2, marginTop: 2 }}>{p.artistName}</div>
+
+        {/*
+          Reach, not activity. `served` counts impressions and `listeners` counts
+          people, and the cap is per listener - so these diverge, and the pair is
+          the only honest answer to "is this reaching anyone".
+        */}
+        <div style={{ flex: 'none', textAlign: 'right', minWidth: 104 }}>
+          <div style={{ ...num, font: `500 19px/1 ${FONT.mono}`, color: p.served ? C.t1 : C.t3 }}>
+            {p.served.toLocaleString()}
+          </div>
+          <div style={{ font: `400 10.5px/1.5 ${FONT.text}`, color: C.t3, marginTop: 4 }}>
+            served · {p.listeners.toLocaleString()} listener{p.listeners === 1 ? '' : 's'}
+          </div>
+        </div>
+
+        <div style={{ flex: 'none', textAlign: 'right', minWidth: 68 }}>
+          <div style={{ ...num, font: `400 12px/1 ${FONT.mono}`, color: C.t2 }}>×{p.weight}</div>
+          <div style={{ font: `400 10.5px/1.5 ${FONT.text}`, color: C.t3, marginTop: 4 }}>{p.dailyCapPerUser}/day</div>
+        </div>
+
+        {p.active && (
+          /*
+            Two steps, because this takes music away from listeners.
+
+            Not a modal - a modal for a reversible act is theatre. The button
+            states what the second click does, and retiring is idempotent and
+            re-promotable, so the cost of a mistake is low but not zero.
+          */
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => (confirming ? onRetire() : setConfirming(true))}
+            onBlur={() => setConfirming(false)}
+            title="Retire, not delete - the impression history is the only record of what was served"
+            style={{
+              flex: 'none',
+              height: 32,
+              padding: '0 13px',
+              borderRadius: 8,
+              border: `1px solid ${confirming ? 'rgba(255,98,89,0.45)' : 'rgba(255,255,255,0.13)'}`,
+              background: confirming ? 'rgba(255,98,89,0.12)' : 'rgba(255,255,255,0.05)',
+              color: busy ? C.t3 : confirming ? C.bad : 'rgba(255,255,255,0.8)',
+              font: `500 12px/1 ${FONT.text}`,
+              cursor: busy ? 'wait' : 'pointer',
+              whiteSpace: 'nowrap',
+              transition: `background ${MOTION}`
+            }}
+          >
+            {busy ? 'Retiring…' : confirming ? 'Confirm retire' : 'Retire'}
+          </button>
         )}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, alignItems: 'center' }}>
-          {(p.targetGenres ?? []).map((g) => (
-            <GenreChip key={g} g={g} />
-          ))}
-          <FeatureSource value={p.featureSource} />
-        </div>
       </div>
 
-      {/*
-        Reach, not activity. `served` counts impressions and `listeners` counts
-        people, and the cap is per listener - so these diverge, and the pair is
-        the only honest answer to "is this reaching anyone".
-      */}
-      <div style={{ flex: 'none', textAlign: 'right', minWidth: 92 }}>
-        <div style={{ ...num, font: `500 15px/1 ${FONT.mono}`, color: p.served ? C.t1 : C.t3 }}>
-          {p.served.toLocaleString()}
+      {/* Relative to the busiest campaign, so it answers "which is landing"
+          rather than implying a target nobody set. */}
+      {peak > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <Bar pct={(p.served / peak) * 100} color={p.active ? C.okDim : 'rgba(255,255,255,0.16)'} />
         </div>
-        <div style={{ font: `400 10.5px/1.5 ${FONT.text}`, color: C.t3, marginTop: 3 }}>
-          served to {p.listeners.toLocaleString()} listener{p.listeners === 1 ? '' : 's'}
-        </div>
-      </div>
-
-      <div style={{ flex: 'none', textAlign: 'right', minWidth: 72 }}>
-        <div style={{ ...num, font: `400 12px/1 ${FONT.mono}`, color: C.t2 }}>×{p.weight}</div>
-        <div style={{ font: `400 10.5px/1.5 ${FONT.text}`, color: C.t3, marginTop: 3 }}>
-          max {p.dailyCapPerUser}/day
-        </div>
-      </div>
-
-      {p.active && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onRetire}
-          title="Retire, not delete - the impression history is the only record of what was served"
-          style={{
-            flex: 'none',
-            height: 32,
-            padding: '0 13px',
-            borderRadius: 8,
-            border: '1px solid rgba(255,255,255,0.13)',
-            background: 'rgba(255,255,255,0.05)',
-            color: busy ? C.t3 : 'rgba(255,255,255,0.8)',
-            font: `500 12px/1 ${FONT.text}`,
-            cursor: busy ? 'wait' : 'pointer'
-          }}
-        >
-          Retire
-        </button>
       )}
     </div>
   );
@@ -405,32 +553,89 @@ function PromotionCard({ p, busy, onRetire }: { p: Promotion; busy: boolean; onR
 
 /* ── Pieces ─────────────────────────────────────────────────────────────── */
 
+function Stepper({
+  label,
+  hint,
+  value,
+  step,
+  min,
+  max,
+  onChange
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  step: number;
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+}) {
+  const clamp = (n: number) => Math.min(max, Math.max(min, Math.round(n * 10) / 10));
+  const btn = (t: string, d: number) => (
+    <button
+      type="button"
+      onClick={() => onChange(clamp(value + d))}
+      aria-label={`${t === '-' ? 'Decrease' : 'Increase'} ${label}`}
+      style={{
+        width: 26,
+        height: 26,
+        borderRadius: 6,
+        border: '1px solid rgba(255,255,255,0.11)',
+        background: 'rgba(255,255,255,0.04)',
+        color: 'rgba(255,255,255,0.75)',
+        font: `400 13px/1 ${FONT.mono}`,
+        cursor: 'pointer'
+      }}
+    >
+      {t}
+    </button>
+  );
+  return (
+    <div style={{ minWidth: 190 }}>
+      <div
+        style={{
+          font: `600 9.5px/1 ${FONT.text}`,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          color: C.t3,
+          marginBottom: 9
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+        {btn('−', -step)}
+        <span style={{ ...num, minWidth: 38, textAlign: 'center', font: `500 14px/1 ${FONT.mono}`, color: '#fff' }}>
+          {value}
+        </span>
+        {btn('+', step)}
+      </div>
+      <div style={{ font: `400 10.5px/1.5 ${FONT.text}`, color: C.t3, marginTop: 8, maxWidth: '34ch' }}>{hint}</div>
+    </div>
+  );
+}
+
 /**
  * `featureSource` is the field that decides whether this feature works at all.
  *
  * The recommender drops any candidate it has no audio features for, and those
  * come from a frozen 2024 dataset with 77% coverage - new releases are
  * disproportionately in the missing 23%, which is exactly what gets promoted.
- * "7563" by Florence Road has no features of its own; injected naively it would
- * have been dropped on every request, with the pool building fine, nothing
- * erroring, and the track simply never airing.
+ * "7563" has no features of its own; injected naively it would have been dropped
+ * on every request, with the pool building fine, nothing erroring, and the track
+ * simply never airing.
  *
- * So a promotion is classified when it is saved, and this says how:
- *
- *   track    the recording's own features - nothing to say
- *   sibling  median of the artist's covered tracks - fine, worth a quiet note
- *   genre    a genre default - we know nothing about how it actually SOUNDS
- *
- * Only `genre` is coloured, because only `genre` changes what an operator should
- * expect: it will play, it may just sit oddly next to its neighbours. Worth
- * seeing before a campaign goes out rather than after.
+ * Only `genre` is coloured, because only `genre` changes what to expect: it will
+ * play, it may just sit oddly next to its neighbours. `sibling` is common and
+ * normal for anything recently released, and colouring it would cry wolf.
  */
 function FeatureSource({ value }: { value: Promotion['featureSource'] }) {
   const copy: Record<Promotion['featureSource'], { label: string; title: string }> = {
     track: { label: 'own features', title: 'Sequenced from this recording’s own audio features.' },
     sibling: {
       label: 'sibling features',
-      title: 'No features for this recording. Sequenced from the median of the artist’s covered tracks.'
+      title:
+        'No features for this recording, which is normal for anything recently released. Sequenced from the median of the artist’s covered tracks.'
     },
     genre: {
       label: 'genre default',
@@ -475,13 +680,15 @@ const GenreChip = ({ g }: { g: string }) => (
 /**
  * Artwork, with a placeholder that is obviously a placeholder.
  *
- * Apple's CDN can and does 404 individual sizes, and a broken image icon in a
- * dark UI reads as a rendering fault. The fallback is a plain tile with a note
- * glyph - it says "no sleeve" rather than "something is broken".
+ * `artwork` is nullable - Apple omits it on a few catalogue entries and a
+ * promotion is perfectly serveable without one - and the CDN can 404 an
+ * individual size. A broken-image icon in a dark UI reads as a rendering fault,
+ * so the fallback is a plain tile with a note glyph: "no sleeve", not "something
+ * is broken".
  */
 function Art({ src, size, round }: { src: string | null; size: number; round?: boolean }) {
   const [failed, setFailed] = useState(false);
-  const shape = { width: size, height: size, borderRadius: round ? '50%' : 9, flex: 'none' as const };
+  const shape = { width: size, height: size, borderRadius: round ? '50%' : 11, flex: 'none' as const };
   if (!src || failed)
     return (
       <div
@@ -504,7 +711,13 @@ function Art({ src, size, round }: { src: string | null; size: number; round?: b
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
-      style={{ ...shape, objectFit: 'cover', background: 'rgba(255,255,255,0.05)', border: LINE.edge }}
+      style={{
+        ...shape,
+        objectFit: 'cover',
+        background: 'rgba(255,255,255,0.05)',
+        border: LINE.edge,
+        boxShadow: '0 6px 18px -10px rgba(0,0,0,0.8)'
+      }}
     />
   );
 }
@@ -515,21 +728,30 @@ function WriteError({ err }: { err: unknown }) {
   const detail = (err as any)?.detail;
   const text: Record<string, string> = {
     already_promoted: 'Already promoted. Retire the existing promotion before creating a new one for the same act.',
-    not_in_storefront: 'No such id in that storefront. The catalogue is per-storefront, so an id from one may not exist in another.',
+    not_in_storefront:
+      'No such id in that storefront. The catalogue is per-storefront, so an id from one may not exist in another.',
     bad_request:
       'The backend refused it. Most often no target genres could be resolved - and empty targeting matches nothing rather than everything, so it would have saved quietly and never fired.'
   };
   return (
     <div
       style={{
-        marginTop: 14,
+        marginTop: 16,
         border: '1px solid rgba(255,98,89,0.28)',
         background: 'rgba(255,98,89,0.06)',
-        borderRadius: 10,
-        padding: '13px 15px'
+        borderRadius: 12,
+        padding: '14px 16px'
       }}
     >
-      <div style={{ font: `600 10px/1 ${FONT.text}`, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.bad, marginBottom: 7 }}>
+      <div
+        style={{
+          font: `600 10px/1 ${FONT.text}`,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          color: C.bad,
+          marginBottom: 8
+        }}
+      >
         Not saved
       </div>
       <div style={{ font: `400 12.5px/1.6 ${FONT.text}`, color: C.t2, maxWidth: '78ch' }}>
@@ -545,23 +767,29 @@ function Saved({ p }: { p: Promotion }) {
   return (
     <div
       style={{
-        marginTop: 14,
+        marginTop: 16,
         border: '1px solid rgba(63,179,166,0.3)',
         background: 'rgba(63,179,166,0.07)',
-        borderRadius: 10,
-        padding: '13px 15px'
+        borderRadius: 12,
+        padding: '14px 16px',
+        display: 'flex',
+        gap: 14,
+        alignItems: 'center'
       }}
     >
-      <div style={{ font: `500 13px/1.5 ${FONT.text}`, color: '#fff' }}>
-        {p.name} is promoted, targeting {(p.targetGenres ?? []).join(', ') || 'nothing'}.
-      </div>
-      <div style={{ font: `400 12px/1.6 ${FONT.text}`, color: C.t2, marginTop: 5, maxWidth: '78ch' }}>
-        {p.featureSource === 'genre'
-          ? 'Sequencing is approximate: no audio features exist for this recording or its siblings, so it was placed on genre alone. It will play; it may sit oddly next to its neighbours.'
-          : p.featureSource === 'sibling'
-            ? 'No audio features for this exact recording, so it was sequenced from the median of the artist’s covered tracks.'
-            : 'Sequenced from the recording’s own audio features.'}{' '}
-        It competes for a slot from the next pool build; it is not guaranteed to air.
+      <Art src={artworkUrl(p.artwork, 44)} size={44} round={p.kind === 'artist'} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ font: `500 13.5px/1.45 ${FONT.text}`, color: '#fff' }}>
+          {p.name} is promoted, targeting {(p.targetGenres ?? []).join(', ') || 'nothing'}.
+        </div>
+        <div style={{ font: `400 12px/1.6 ${FONT.text}`, color: C.t2, marginTop: 4, maxWidth: '78ch' }}>
+          {p.featureSource === 'genre'
+            ? 'Sequencing is approximate: no audio features exist for this recording or its siblings, so it was placed on genre alone. It will play; it may sit oddly next to its neighbours.'
+            : p.featureSource === 'sibling'
+              ? 'No audio features for this exact recording - normal for a recent release - so it was sequenced from the median of the artist’s covered tracks.'
+              : 'Sequenced from the recording’s own audio features.'}{' '}
+          It competes for a slot from the next pool build; it is not guaranteed to air.
+        </div>
       </div>
     </div>
   );
@@ -588,16 +816,16 @@ const NotOperator = () => (
 );
 
 const SkelCards = () => (
-  <div style={{ display: 'grid', gap: 10 }}>
+  <div style={{ display: 'grid', gap: 12 }}>
     {[0, 1, 2].map((i) => (
-      <div key={i} style={{ ...CARD, padding: 14, display: 'flex', gap: 14, alignItems: 'center' }}>
-        <Skel w={64} h={64} r={9} />
-        <span style={{ flex: 1, display: 'grid', gap: 8 }}>
-          <Skel w={`${46 + i * 9}%`} h={13} />
+      <div key={i} style={{ ...CARD, padding: 16, display: 'flex', gap: 16, alignItems: 'center' }}>
+        <Skel w={72} h={72} r={11} />
+        <span style={{ flex: 1, display: 'grid', gap: 9 }}>
+          <Skel w={`${46 + i * 9}%`} h={14} />
           <Skel w="30%" h={11} />
-          <Skel w="42%" h={10} />
+          <Skel w="42%" h={11} />
         </span>
-        <Skel w={78} h={34} r={8} />
+        <Skel w={92} h={34} r={8} />
       </div>
     ))}
   </div>

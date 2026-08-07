@@ -453,7 +453,16 @@ export type Promotion = {
   listeners: number;
   createdAt: string;
   /**
-   * `appleId` is returned; ARTWORK IS NOT.
+   * `artwork` landed on 7 Aug and promotion 1 was backfilled, so the picker and
+   * the list now carry identical sleeves.
+   *
+   * It is still NULLABLE - Apple omits artwork on a few catalogue entries, and a
+   * promotion is perfectly serveable without a picture, so a missing sleeve must
+   * not block the save and does not. The placeholder stays correct for those; it
+   * is simply no longer every row.
+   *
+   * The history, because it is the useful part: this field did not exist and I
+   * had typed it onto the type anyway, from the SEARCH response's shape.
    *
    * I typed an `artwork` field onto this type from the search response's shape
    * without checking the list response, so it was permanently undefined and
@@ -461,18 +470,15 @@ export type Promotion = {
    * and that is exactly why it went unnoticed: a graceful degrade hides an
    * invented field, where a crash would have named it immediately.
    *
-   * Verified against the live response - the fields are id, kind, appleId, isrc,
-   * name, artistName, targetGenres, featureSource, weight, dailyCapPerUser,
-   * startsAt, endsAt, active, retiredAt, createdAt, served, listeners.
-   *
-   * Deliberately NOT worked around. The dashboard holds no Apple token by
-   * design, so it cannot resolve an id to a sleeve, and caching the URL at
-   * create time would make artwork appear on promotions made in this browser and
-   * not on others - intermittently-present state is worse than uniformly absent.
-   * Requested from the backend instead.
+   * It was permanently undefined, so every row rendered the placeholder - and
+   * the graceful degrade is exactly why nobody noticed. A crash names an
+   * invented field in seconds; a fallback makes it look like absent data.
    */
+  artwork?: string | null;
   appleId: string;
   isrc?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
 };
 
 export const usePromotionSearch = (q: string, kind: 'song' | 'artist', enabled: boolean) =>
