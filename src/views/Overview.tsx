@@ -55,13 +55,30 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
             verdict.tone === 'bad' ? 'rgba(255,98,89,0.3)' : verdict.tone === 'warn' ? 'rgba(224,160,48,0.3)' : 'rgba(63,179,166,0.22)'
         }}
       >
+        {/*
+          Two columns, because one column in a full-width card is a tall band of
+          empty pixels.
+
+          This was a flex row with a single child, so the verdict and the on-air
+          block stacked down the left third and the remaining two thirds of the
+          card were nothing at all - a header's worth of content charging a
+          hero's worth of vertical space, and pushing everything that an operator
+          actually acts on further below the fold.
+
+          The split is by question, not by convenience. Left: is the software
+          healthy. Right: is the station transmitting. They are the two things
+          you check on arrival and they are independent - every engineering panel
+          can be green while the station is silent, because nothing throws when
+          nobody is being played to. Side by side they read as one glance instead
+          of two.
+        */}
         <div
           style={{
-            padding: 'clamp(24px,3.2vw,36px)',
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'flex-start',
-            gap: 24,
+            padding: 'clamp(22px,2.6vw,30px)',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,320px),1fr))',
+            alignItems: 'center',
+            gap: 'clamp(20px,2.4vw,32px)',
             // A wash of the verdict colour rather than a filled card. The colour
             // still carries the state; it just stops shouting it.
             background:
@@ -72,27 +89,28 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
                   : 'radial-gradient(120% 140% at 0% 0%, rgba(63,179,166,0.09) 0%, transparent 60%)'
           }}
         >
-          <div style={{ minWidth: 0, flex: '1 1 340px' }}>
-            {/*
-              Rad.FM is a radio station. The site's own eyebrow reads
-              "ON AIR NOW - MORNING MAYHEM", and this dashboard could not answer
-              the one question you would ask a control room: is it transmitting?
-              Every panel measured whether the CODE was healthy; none measured
-              whether the STATION was, and a station can be completely silent
-              with every engineering panel green - nothing throws when nobody is
-              being played to.
-            */}
+          {/* The answer, first in the reading order and largest on the page. */}
+          <h2
+            style={{
+              margin: 0,
+              minWidth: 0,
+              font: `600 clamp(28px,3.4vw,40px)/1.05 ${FONT.display}`,
+              letterSpacing: '-0.033em',
+              color: verdict.tone === 'bad' ? C.bad : verdict.tone === 'warn' ? C.warnText : C.ok
+            }}
+          >
+            {verdict.title}
+          </h2>
+
+          {/*
+            Rad.FM is a radio station. The site's own eyebrow reads
+            "ON AIR NOW - MORNING MAYHEM", and this dashboard could not answer
+            the one question you would ask a control room: is it transmitting?
+            Every panel measured whether the CODE was healthy; none measured
+            whether the STATION was.
+          */}
+          <div style={{ minWidth: 0 }}>
             <OnAir state={onAir} demo={Boolean(demo)} />
-            <h2
-              style={{
-                margin: 0,
-                font: `600 clamp(30px,4vw,44px)/1.02 ${FONT.display}`,
-                letterSpacing: '-0.033em',
-                color: verdict.tone === 'bad' ? C.bad : verdict.tone === 'warn' ? C.warnText : C.ok
-              }}
-            >
-              {verdict.title}
-            </h2>
           </div>
         </div>
       </div>
@@ -839,7 +857,7 @@ function OnAir({ state, demo }: { state: ReturnType<typeof useOnAir>; demo: bool
     return (
       <>
         {eyebrow('Nobody listening', C.bad, false)}
-        <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: C.t2, marginBottom: 14, maxWidth: '62ch' }}>
+        <div style={{ font: `400 12.5px/1.5 ${FONT.text}`, color: C.t2, maxWidth: '62ch' }}>
           No plays from any listener in three hours. Nothing throws when nobody is being played to, so no other panel
           here will show it.
         </div>
@@ -864,7 +882,7 @@ function OnAir({ state, demo }: { state: ReturnType<typeof useOnAir>; demo: bool
         opposite of what the line above just said - so the list says which it is.
       */}
       {nowPlaying.length > 0 && (
-        <div style={{ display: 'grid', gap: 5, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gap: 5 }}>
           <div
             style={{
               font: `600 9px/1 ${FONT.text}`,
