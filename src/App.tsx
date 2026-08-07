@@ -59,7 +59,56 @@ export const RANGE_HOURS: Record<Range, number> = {
 const DATA_VIEWS: ViewId[] = ['listening', 'growth', 'cost'];
 const ENG_RANGES: Range[] = ['6h', '24h', '3d', '7d'];
 const DATA_RANGES: Range[] = ['7d', '30d', '90d'];
-export const rangesFor = (view: ViewId): Range[] => (DATA_VIEWS.includes(view) ? DATA_RANGES : ENG_RANGES);
+
+/**
+ * Views with no time dimension at all, and what they ARE scoped to.
+ *
+ * The range control rendered on every page. On these four nothing reads
+ * `ctx.hours` - they are current-state or newest-first views - so the chips
+ * highlighted, the selection persisted, and not one number moved. A control that
+ * responds to being clicked and changes nothing is worse than no control: it
+ * teaches you that the range does not work, and then you carry that belief onto
+ * the pages where it does.
+ *
+ * They get a label instead of a selector. Stating the window a page is fixed to
+ * is more use than an inert widget, and it is the same habit as every other
+ * scope note in this product.
+ */
+const FIXED_SCOPE: Partial<Record<ViewId, string>> = {
+  users: 'current state',
+  stations: 'current state',
+  config: 'current state',
+  audit: 'newest first'
+};
+
+/**
+ * Views where a panel is capped by Workers Observability's 3 day retention, and
+ * which panel it is.
+ *
+ * Logs is not in here because it no longer OFFERS 7d - every panel on it is
+ * Observability-backed, so 3d and 7d returned byte-identical numbers and the
+ * chip was a control that could not do what it says. Traffic keeps 7d because
+ * half of it (volume, CPU, wall) comes from GraphQL analytics and genuinely
+ * answers a week; only the 4xx table is capped.
+ *
+ * The banner used to fire on every engineering view at 7d, which over-warned on
+ * Rad and Recommendations - they read Analytics Engine and have no such cap -
+ * and taught you to ignore it before you reached a page where it was true.
+ */
+const RETENTION_CAPPED: Partial<Record<ViewId, string>> = {
+  traffic: 'The 4xx table below is capped at 3d; request volume and the percentiles are not.',
+  overview: 'The setlist fill rate below is capped at 3d; every other panel here is not.'
+};
+
+export const rangesFor = (view: ViewId): Range[] =>
+  FIXED_SCOPE[view]
+    ? []
+    : DATA_VIEWS.includes(view)
+      ? DATA_RANGES
+      : // Logs is entirely Observability-backed, so a week is not on offer.
+        view === 'logs'
+        ? (['6h', '24h', '3d'] as Range[])
+        : ENG_RANGES;
 
 const TITLES: Record<ViewId, [string, string]> = {
   overview: ['Overview', 'The ten-second answer. Signals are ranked by blast radius, not by recency.'],
@@ -210,11 +259,25 @@ export default function App() {
   // Observability retains 3 days. Only the engineering views read it, so the
   // banner belongs to them - the data views reach further by design.
   const isData = DATA_VIEWS.includes(view);
-  const rangeExceedsRetention = !isData && engRange === '7d';
+  // Named per view, so it says which panel is capped rather than "log panels".
+  const retentionNote = !isData && engRange === '7d' ? RETENTION_CAPPED[view] : undefined;
 
   const ownerTokenExpiresInDays =
     session.state === 'ok' ? session.data.ownerTokenExpiresInDays : null;
-  const activeRange = isData ? dataRange : engRange;
+  /**
+   * The window this view is actually showing.
+   *
+   * Clamped to what the view offers WITHOUT writing back to state: engRange is
+   * what the nav badges are counted over, and having a view silently rewrite it
+   * on mount is how opening one page used to change every badge on the page.
+   * Pick the longest window this view can honestly answer instead.
+   */
+  const allowed = rangesFor(view);
+  const activeRange = isData
+    ? dataRange
+    : allowed.length === 0 || allowed.includes(engRange)
+      ? engRange
+      : allowed[allowed.length - 1];
   const ctx: Ctx = {
     view,
     go: setView,
@@ -464,6 +527,23 @@ export default function App() {
               </p>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+              {/* No selector where there is nothing to select. The scope is stated instead. */}
+              {FIXED_SCOPE[view] && (
+                <span
+                  style={{
+                    padding: '7px 11px',
+                    borderRadius: 8,
+                    border: LINE.edge,
+                    background: 'rgba(255,255,255,0.03)',
+                    font: `400 11.5px/1.2 ${FONT.mono}`,
+                    color: C.t3,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {FIXED_SCOPE[view]}
+                </span>
+              )}
+              {rangesFor(view).length > 0 && (
               <div
                 role="group"
                 aria-label="Time range"
@@ -496,6 +576,7 @@ export default function App() {
                   </button>
                 ))}
               </div>
+              )}
               <button
                 type="button"
                 onClick={refresh}
@@ -519,7 +600,7 @@ export default function App() {
             </div>
           </div>
 
-          {rangeExceedsRetention && (
+          {retentionNote && (
             <div
               style={{
                 padding: '9px clamp(16px,2.4vw,28px)',
@@ -534,8 +615,8 @@ export default function App() {
                 <Icon name="exclamationmark.triangle" size={13} />
               </span>
               <span style={{ font: `400 12px/1.45 ${FONT.text}`, color: C.warnText }}>
-                Workers Observability retains 3 days. Log panels below are capped at 3d regardless of the range selected -
-                anything longer needs a rollup into Analytics Engine or D1.
+                Workers Observability retains 3 days. {retentionNote} Anything longer needs a rollup into Analytics
+                Engine or D1.
               </span>
             </div>
           )}
