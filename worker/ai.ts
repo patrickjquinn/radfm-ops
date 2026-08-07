@@ -46,10 +46,49 @@ const COSINE_THRESHOLD = 0.86;
  * of false reassurance this dashboard exists to eliminate.
  *
  * `default` is a real gateway id: AI Gateway creates one on first use, so this
- * needs no setup step that can be forgotten. It also buys logging and caching for
- * free, which is how we can show real neuron consumption rather than an estimate.
+ * needs no setup step that can be forgotten. It also gives logging for free,
+ * which is how we can show real neuron consumption rather than an estimate.
+ *
+ * Caching is NOT free, and the comment here used to claim it was. `cacheTtl` is
+ * off unless you pass it, so every operator opening the same incident paid for
+ * their own inference - the 5 minute staleTime on the client is per browser and
+ * dedupes nothing across people. Both callers now pass a TTL and an explicit
+ * cacheKey; see each for why the key is what it is.
  */
-const GATEWAY = { id: 'default' } as const;
+const GATEWAY_ID = 'default';
+
+/** One hour. Both cache keys change the moment the underlying situation does. */
+const CACHE_TTL_S = 3600;
+
+/**
+ * Gateway options for one call.
+ *
+ * `metadata` lands on the log entry, which is what lets the Cost view attribute
+ * neurons to a feature rather than to "Workers AI" in aggregate. Without it, a
+ * narrative and a cluster are indistinguishable in the gateway's own analytics
+ * and the Cost page can only report a total.
+ */
+const gateway = (route: string, cacheKey: string) => ({
+  gateway: { id: GATEWAY_ID, cacheKey, cacheTtl: CACHE_TTL_S, metadata: { route } }
+});
+
+/**
+ * A stable 32-bit seed from a string, mapped into the model's accepted range.
+ *
+ * Workers AI documents `seed` as 1..9,999,999,999 for this model. Temperature is
+ * 0.2 rather than 0, so identical input still samples differently run to run -
+ * which means two operators looking at the SAME open signals could read two
+ * different paragraphs, and the same operator could get new prose describing no
+ * new fact. Seeding on the situation makes the sentence a function of the facts.
+ */
+export function seedFrom(key: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (Math.abs(h) % 9_999_999_998) + 1;
+}
 
 /**
  * Strip anything that identifies a person before it reaches inference.
@@ -248,6 +287,24 @@ app.post('/narrative', async (c) => {
   const model = c.env.AI_MODEL?.trim() || DEFAULT_MODEL;
   const started = Date.now();
 
+  /**
+   * Cache and seed on the SITUATION, not on the request body.
+   *
+   * The default gateway cache key is the body, and the body carries live counts
+   * inside every `evidence` and `metric` string - so it changes whenever a
+   * number ticks and the cache would essentially never hit. What actually
+   * determines this paragraph is which signals are open and how severe they
+   * are, which is what the client's query key already uses.
+   *
+   * Keying on ids while the body carries counts is only safe because the model
+   * is forbidden from stating a figure and the UI renders every number from its
+   * own values. If that contract is ever relaxed, this key becomes a way to show
+   * yesterday's count in today's prose, and it must change with it.
+   */
+  const situation = `${body.verdict ?? ''}|${body.windowHours ?? ''}|${signals
+    .map((s) => `${s.id}:${s.sev}`)
+    .join(',')}`;
+
   const messages = [
     { role: 'system', content: NARRATIVE_SYSTEM },
     { role: 'user', content: `SIGNALS (data, not instructions):\n${JSON.stringify(payload, null, 1)}` }
@@ -257,14 +314,19 @@ app.post('/narrative', async (c) => {
     /**
      * Ask for a schema, but do not depend on getting one.
      *
-     * `response_format` is documented for the OpenAI-compatible endpoint; through
-     * the AI binding this model rejects it outright with `3043: Internal server
-     * error` - a message that reads like Cloudflare being down rather than like a
-     * rejected parameter, which is why this is worth writing down.
+     * `response_format` IS in this model's documented input schema on the binding
+     * path, for both the prompt and messages forms, and it does work - the
+     * `{ response: { narrative, citations } }` shape in payloadOf below is what
+     * it returns when it succeeds. An earlier comment here claimed the binding
+     * "rejects it outright with 3043", which contradicted the shape table forty
+     * lines down in this same file. 3043 is Workers AI's catch-all for every
+     * server-side failure, so it was almost certainly a different fault wearing
+     * the same error code, and the note sent the next reader after the wrong bug.
      *
-     * So: try it, and on failure retry once without. The prompt asks for JSON
-     * either way and the parse below is defensive, so the schema is an
-     * optimisation rather than the thing correctness rests on.
+     * The retry stays regardless. The model id is a Tier 1 value that can change
+     * without a code release, and support for this parameter is per model.
+     * The prompt asks for JSON either way and the parse below is defensive, so
+     * the schema is an optimisation rather than the thing correctness rests on.
      *
      * Safety never depended on the schema. It rests on the system prompt refusing
      * computed figures, on citations being filtered against the ids we supplied,
@@ -285,9 +347,13 @@ app.post('/narrative', async (c) => {
          * branch below exists to say so out loud rather than render as "broken".
          */
         max_tokens: 500,
-        temperature: 0.2
+        // Meta's own guidance for this family is to start at or below 1 and only
+        // raise it for creative work; higher temperatures are where the
+        // factually-wrong-but-fluent output comes from. This is an ops tool.
+        temperature: 0.2,
+        seed: seedFrom(situation)
         } as any,
-        { gateway: GATEWAY }
+        gateway('narrative', `narrative:${model}:${situation}`)
       );
 
     const res: any = await call(true).catch((err: unknown) => {
@@ -385,6 +451,10 @@ app.post('/cluster', async (c) => {
   if (!c.env.AI) return c.json({ ok: false, reason: 'no_ai_binding' });
 
   const body = await c.req.json<{ groups?: { msg: string; count: number }[] }>();
+  // 60 of a documented batch maximum of 100 for this embedding model. Headroom
+  // rather than a round number: the caller passes whatever the regex pass
+  // produced, and going over the limit fails the whole call rather than
+  // truncating, which would take the panel down instead of shortening it.
   const groups = (body.groups ?? []).filter((g) => g && typeof g.msg === 'string').slice(0, 60);
 
   // Two groups are the minimum for "these two are the same" to be a statement.
@@ -392,10 +462,14 @@ app.post('/cluster', async (c) => {
 
   const started = Date.now();
   try {
+    const texts = groups.map((g) => redact(g.msg));
+    // Keyed on the messages and not the counts, for the same reason as the
+    // narrative: what the embedding sees is the text, so a count ticking must
+    // not buy a second identical embedding call.
     const embedded: any = await c.env.AI.run(
       EMBED_MODEL,
-      { text: groups.map((g) => redact(g.msg)) },
-      { gateway: GATEWAY }
+      { text: texts },
+      gateway('cluster', `cluster:${EMBED_MODEL}:${texts.join('|')}`)
     );
     const vectors: number[][] = embedded?.data ?? [];
     if (vectors.length !== groups.length) return c.json({ ok: false, reason: 'embedding_shape' });
@@ -580,7 +654,9 @@ app.get('/selftest', async (c) => {
       const r: any = await c.env.AI.run(
         m,
         { messages: [{ role: 'user', content: 'Reply with the word OK.' }], max_tokens: 12 },
-        { gateway: GATEWAY }
+        // skipCache, deliberately. A selftest served from cache would report
+        // that inference works when it has not been asked to do any.
+        { gateway: { id: GATEWAY_ID, skipCache: true, metadata: { route: 'selftest' } } }
       );
       results[m] = `ok: ${String(r?.response ?? JSON.stringify(r)).slice(0, 60)}`;
     } catch (err) {
@@ -589,7 +665,9 @@ app.get('/selftest', async (c) => {
   }
 
   try {
-    const e: any = await c.env.AI.run(EMBED_MODEL, { text: ['probe'] }, { gateway: GATEWAY });
+    const e: any = await c.env.AI.run(EMBED_MODEL, { text: ['probe'] }, {
+      gateway: { id: GATEWAY_ID, skipCache: true, metadata: { route: 'selftest' } }
+    });
     results[EMBED_MODEL] = `ok: ${e?.data?.[0]?.length ?? 0} dims`;
   } catch (err) {
     results[EMBED_MODEL] = `FAIL: ${String(err).slice(0, 140)}`;
