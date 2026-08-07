@@ -46,50 +46,55 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
         raised surface, the verdict at the top of it, the domains reading as its
         evidence rather than as a second panel.
       */}
+      {/*
+        Two cards, not one card with two columns.
+
+        These answer two independent questions - is the software healthy, is the
+        station transmitting - and the giveaway that they had no business sharing
+        a surface was the colour. The card's border and wash are keyed to the
+        VERDICT tone, so a red "Degraded" border wrapped an on-air block reading
+        "2 listening now" in teal. The station was fine; the software was not,
+        and one surface made the verdict's colour a claim about content it does
+        not describe. Everywhere else in this product a card is one object with
+        one state, and these are two.
+
+        Equal width on purpose. Neither outranks the other at 3am: a silent
+        station with every engineering panel green is the failure mode this pair
+        exists to catch, and sizing one down would say otherwise.
+      */}
       <div
         style={{
-          ...CARD,
-          padding: 0,
-          overflow: 'hidden',
-          borderColor:
-            verdict.tone === 'bad' ? 'rgba(255,98,89,0.3)' : verdict.tone === 'warn' ? 'rgba(224,160,48,0.3)' : 'rgba(63,179,166,0.22)'
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,320px),1fr))',
+          gap: GAP
         }}
       >
-        {/*
-          Two columns, because one column in a full-width card is a tall band of
-          empty pixels.
-
-          This was a flex row with a single child, so the verdict and the on-air
-          block stacked down the left third and the remaining two thirds of the
-          card were nothing at all - a header's worth of content charging a
-          hero's worth of vertical space, and pushing everything that an operator
-          actually acts on further below the fold.
-
-          The split is by question, not by convenience. Left: is the software
-          healthy. Right: is the station transmitting. They are the two things
-          you check on arrival and they are independent - every engineering panel
-          can be green while the station is silent, because nothing throws when
-          nobody is being played to. Side by side they read as one glance instead
-          of two.
-        */}
+        {/* The answer, first in the reading order and largest on the page. */}
         <div
           style={{
-            padding: 'clamp(22px,2.6vw,30px)',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,320px),1fr))',
+            ...CARD,
+            display: 'flex',
             alignItems: 'center',
-            gap: 'clamp(20px,2.4vw,32px)',
+            padding: 'clamp(22px,2.6vw,30px)',
+            borderColor:
+              verdict.tone === 'bad'
+                ? 'rgba(255,98,89,0.3)'
+                : verdict.tone === 'warn'
+                  ? 'rgba(224,160,48,0.3)'
+                  : 'rgba(63,179,166,0.22)',
             // A wash of the verdict colour rather than a filled card. The colour
-            // still carries the state; it just stops shouting it.
-            background:
+            // still carries the state; it just stops shouting it. Layered OVER
+            // the shared card fill, not instead of it - replacing it would make
+            // this the one card on the page without the common surface.
+            background: `${
               verdict.tone === 'bad'
                 ? 'radial-gradient(120% 140% at 0% 0%, rgba(255,98,89,0.10) 0%, transparent 60%)'
                 : verdict.tone === 'warn'
                   ? 'radial-gradient(120% 140% at 0% 0%, rgba(224,160,48,0.10) 0%, transparent 60%)'
                   : 'radial-gradient(120% 140% at 0% 0%, rgba(63,179,166,0.09) 0%, transparent 60%)'
+            }, ${CARD.background as string}`
           }}
         >
-          {/* The answer, first in the reading order and largest on the page. */}
           <h2
             style={{
               margin: 0,
@@ -101,17 +106,17 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
           >
             {verdict.title}
           </h2>
+        </div>
 
-          {/*
-            Rad.FM is a radio station. The site's own eyebrow reads
-            "ON AIR NOW - MORNING MAYHEM", and this dashboard could not answer
-            the one question you would ask a control room: is it transmitting?
-            Every panel measured whether the CODE was healthy; none measured
-            whether the STATION was.
-          */}
-          <div style={{ minWidth: 0 }}>
-            <OnAir state={onAir} demo={Boolean(demo)} />
-          </div>
+        {/*
+          Rad.FM is a radio station. The site's own eyebrow reads
+          "ON AIR NOW - MORNING MAYHEM", and this dashboard could not answer the
+          one question you would ask a control room: is it transmitting? Every
+          panel measured whether the CODE was healthy; none measured whether the
+          STATION was. This card carries its own state, in its own colour.
+        */}
+        <div style={{ ...CARD, padding: 'clamp(22px,2.6vw,30px)', minWidth: 0 }}>
+          <OnAir state={onAir} demo={Boolean(demo)} />
         </div>
       </div>
 
