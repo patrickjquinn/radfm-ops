@@ -210,11 +210,25 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
    * signals open". It was answering "is the code broken", which is a narrower
    * question than the page claims to answer.
    */
-  const plays = useAePlays(1, live);
+  // Rolling 24h totals only. The rankings belong to the Listening view.
+  const plays = useAePlays(1, live, 'totals');
   // A separate multi-day read purely for the comparison. The 1-day window above
   // buckets into partial days, and comparing a full day against a partial one is
   // how a -10% change renders as +323%.
-  const playsTrend = useAePlays(4, live);
+  /*
+    Seven days, and the daily series only.
+    
+    This was four days, and `plays.data.daily` - a ONE day query - was what the
+    "listening history is N days deep" item counted. A one-day window can hold at
+    most two day buckets, so that item could never report more than 2 and said
+    "2 days deep" on the Overview while the Listening view, reading a real
+    window, showed 3. It was measuring its own query, not the play log.
+    
+    Seven because the claim it feeds is "fewer than 7 days deep": at four the
+    item could never clear, which is the permanently-on indicator this product
+    keeps having to delete.
+  */
+  const playsTrend = useAePlays(7, live, 'daily');
   const revenue = useRevenue(live);
   const cost = useCost(24, live);
   const drift = useUserList('drift', live);
@@ -485,7 +499,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
    * be the false-zero mistake in signal form.
    */
   const playsToday = plays.state === 'ok' ? Number(plays.data.totals?.plays ?? 0) : null;
-  const playLogLive = plays.state === 'ok' && plays.data.daily.length > 0;
+  const daysDeep = playsTrend.state === 'ok' ? playsTrend.data.daily.length : 0;
+  const playLogLive = playsTrend.state === 'ok' && daysDeep > 0;
   if (playsToday === 0 && playLogLive)
     signals.unshift({
       id: 'signal:no-plays',
@@ -779,9 +794,9 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     go: 'cost'
   });
 
-  if (playLogLive && plays.state === 'ok' && plays.data.daily.length < 7)
+  if (playLogLive && daysDeep < 7)
     attention.push({
-      title: `Listening history is ${plays.data.daily.length} day${plays.data.daily.length === 1 ? '' : 's'} deep`,
+      title: `Listening history is ${daysDeep} day${daysDeep === 1 ? '' : 's'} deep`,
       detail: 'The play log cannot be backfilled, so trends fill in one day at a time from here.',
       go: 'listening'
     });

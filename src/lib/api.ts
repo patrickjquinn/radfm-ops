@@ -581,9 +581,17 @@ export type PlayDay = { day: string; plays: string; listeners: string };
 export type PlayArtist = { artist: string; plays: string; listeners: string };
 export type PlayTrack = { title: string; artist: string; plays: string };
 
-export const useAePlays = (days: number, enabled = true) =>
+/**
+ * `fields` names the panels the caller will render.
+ *
+ * The route builds one Analytics Engine query per panel, and health.ts calls
+ * this twice on every refresh - so leaving it at the default meant eight of the
+ * nineteen AE queries behind one page load came from here, six of them building
+ * a top-15 ranking that only the Listening view displays.
+ */
+export const useAePlays = (days: number, enabled = true, fields?: string) =>
   lift<{ days: number; totals: PlayTotals | null; daily: PlayDay[]; artists: PlayArtist[]; tracks: PlayTrack[] }>(
-    useQuery({ queryKey: ['ae-plays', days], queryFn: () => cfGet(`/ae/plays?days=${days}`), enabled, ...common })
+    useQuery({ queryKey: ['ae-plays', days, fields ?? 'all'], queryFn: () => cfGet(`/ae/plays?days=${days}${fields ? `&fields=${fields}` : ''}`), enabled, ...common })
   );
 
 

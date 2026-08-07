@@ -527,24 +527,35 @@ app.get('/ae/onair', async (c) => {
    * plain queries are unambiguous, run in parallel, and cost nothing at this
    * cardinality.
    */
-  const windows = [
-    { key: 'last30m', sql: "30' MINUTE" },
-    { key: 'last3h', sql: "3' HOUR" },
-    { key: 'last24h', sql: "24' HOUR" }
-  ] as const;
-
-  const [w30, w3h, w24h, plays, recent] = await Promise.all([
-    ...windows.map((w) =>
-      ae(
-        c.env,
-        `SELECT count(DISTINCT index1) AS n FROM rad_fm_events
-         WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '${w.sql}`
-      )
-    ),
+  /**
+   * Two queries, not five, and every figure still exact.
+   *
+   * This ran one count(DISTINCT index1) per window - 30m, 3h, 24h - plus a
+   * separate plays count, because Analytics Engine has countIf/sumIf/avgIf but
+   * no uniqIf, and `count(DISTINCT if(cond, index1, null))` is rejected with a
+   * 422 (IF branches must share a type).
+   *
+   * Grouping by LISTENER sidesteps the whole problem. One row per distinct
+   * listener in 24h carrying their last play and their play count answers all
+   * four questions in the Worker, by arithmetic over measured values:
+   *
+   *   last24h listeners = row count
+   *   last3h  listeners = rows whose lastSeen is inside 3h
+   *   last30m listeners = rows whose lastSeen is inside 30m
+   *   plays24h          = sum of the per-listener counts
+   *
+   * And it is exact at any volume, because the result set is bounded by the
+   * number of LISTENERS rather than the number of plays - the reason not to just
+   * fetch raw rows and count them in JS, which would be exact today at ~300
+   * plays and quietly wrong the first day it passes a LIMIT.
+   */
+  const [byListener, recent] = await Promise.all([
     ae(
       c.env,
-      `SELECT count() AS n FROM rad_fm_events
-       WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '24' HOUR`
+      `SELECT index1 AS listener, max(timestamp) AS lastSeen, count() AS plays
+       FROM rad_fm_events
+       WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '24' HOUR
+       GROUP BY listener`
     ),
     ae(
       c.env,
@@ -553,18 +564,22 @@ app.get('/ae/onair', async (c) => {
        ORDER BY timestamp DESC LIMIT 12`
     )
   ]);
-  // Every query, not just the first. A silent partial failure here would report
-  // zero listeners, which is the exact false zero this panel exists to catch.
-  for (const q of [w30, w3h, w24h, plays, recent]) if (q.ok === false) return c.json(q);
+  // Both, not just the first. A silent partial failure here would report zero
+  // listeners, which is the exact false zero this panel exists to catch.
+  for (const q of [byListener, recent]) if (q.ok === false) return c.json(q);
 
-  const n = (q: any) => Number(q?.data?.data?.[0]?.n ?? 0);
   const rows = recent.data?.data ?? [];
   const lastAt = rows[0]?.timestamp ? Date.parse(String(rows[0].timestamp).replace(' ', 'T') + 'Z') : null;
 
+  const listenerRows: any[] = byListener.data?.data ?? [];
+  const seenAt = (r: any) => Date.parse(String(r?.lastSeen ?? '').replace(' ', 'T') + 'Z');
+  const now = Date.now();
+  const within = (mins: number) => listenerRows.filter((r) => now - seenAt(r) <= mins * 60_000).length;
+
   return c.json({
     ok: true,
-    listeners: { last30m: n(w30), last3h: n(w3h), last24h: n(w24h) },
-    plays24h: n(plays),
+    listeners: { last30m: within(30), last3h: within(180), last24h: listenerRows.length },
+    plays24h: listenerRows.reduce((a, r) => a + Number(r.plays ?? 0), 0),
     /** Minutes since the last play by ANY listener. Null means none in 3h. */
     quietFor: lastAt ? Math.round((Date.now() - lastAt) / 60_000) : null,
     /**
@@ -803,28 +818,47 @@ app.get('/ae/plays', async (c) => {
   if (gate) return c.json(gate);
   const days = Math.min(Math.max(Number(c.req.query('days') ?? 30), 1), 90);
 
+  /**
+   * Fetch the panels the caller will actually render.
+   *
+   * This always ran four queries, and health.ts calls it TWICE per refresh - a
+   * rolling 24h read and a multi-day read for the trend - so eight of the
+   * nineteen Analytics Engine queries behind one page refresh were this route,
+   * and six of those eight were building a top-15 artist and track ranking that
+   * only the Listening view ever displays.
+   *
+   * `fields` is an allowlist rather than a free-form projection: the caller says
+   * which of the four panels it wants, and nothing about the SQL is
+   * client-controlled.
+   */
+  const want = new Set((c.req.query('fields') ?? 'totals,daily,artists,tracks').split(','));
+  const skip = Promise.resolve({ ok: true as const, data: { data: [] as any[] } });
+
+  const win = `timestamp > now() - INTERVAL '${days}' DAY`;
+  const q = (wanted: string, sql: string) => (want.has(wanted) ? ae(c.env, sql) : skip);
+
   const [totals, daily, artists, tracks] = await Promise.all([
-    ae(
-      c.env,
+    q(
+      'totals',
       `SELECT count() AS plays, count(DISTINCT index1) AS listeners, count(DISTINCT blob2) AS tracks
-       FROM rad_fm_events WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '${days}' DAY`
+       FROM rad_fm_events WHERE blob1 = 'play' AND ${win}`
     ),
-    ae(
-      c.env,
+    q(
+      'daily',
       `SELECT toStartOfDay(timestamp) AS day, count() AS plays, count(DISTINCT index1) AS listeners
-       FROM rad_fm_events WHERE blob1 = 'play' AND timestamp > now() - INTERVAL '${days}' DAY
+       FROM rad_fm_events WHERE blob1 = 'play' AND ${win}
        GROUP BY day ORDER BY day`
     ),
-    ae(
-      c.env,
+    q(
+      'artists',
       `SELECT blob4 AS artist, count() AS plays, count(DISTINCT index1) AS listeners
-       FROM rad_fm_events WHERE blob1 = 'play' AND blob4 != '' AND timestamp > now() - INTERVAL '${days}' DAY
+       FROM rad_fm_events WHERE blob1 = 'play' AND blob4 != '' AND ${win}
        GROUP BY artist ORDER BY plays DESC LIMIT 15`
     ),
-    ae(
-      c.env,
+    q(
+      'tracks',
       `SELECT blob5 AS title, blob4 AS artist, count() AS plays
-       FROM rad_fm_events WHERE blob1 = 'play' AND blob5 != '' AND timestamp > now() - INTERVAL '${days}' DAY
+       FROM rad_fm_events WHERE blob1 = 'play' AND blob5 != '' AND ${win}
        GROUP BY title, artist ORDER BY plays DESC LIMIT 15`
     )
   ]);
@@ -1023,8 +1057,18 @@ app.get('/ae/recs', async (c) => {
   const hours = clampHours(c.req.query('hours'), 24);
   const out = await ae(
     c.env,
+    /*
+      countIf folds what used to be its own query into this one.
+      
+      The zero-track count was a separate ungrouped SELECT over the same rows
+      and the same window. Analytics Engine supports countIf/sumIf/avgIf, so it
+      is a column here instead, and the total is summed across sources in the
+      Worker - arithmetic over measured values, which is the only kind this
+      product does client-side.
+    */
     `SELECT blob2 AS source, count() AS n, avg(double2) AS pool,
-            avg(double3) AS ms, sum(double7) AS degraded
+            avg(double3) AS ms, sum(double7) AS degraded,
+            countIf(double1 = 0) AS zeroTracks
      FROM rad_fm_events
      WHERE blob1 = 'recs' AND timestamp > now() - INTERVAL '${hours}' HOUR
      GROUP BY source ORDER BY n DESC`
@@ -1047,12 +1091,7 @@ app.get('/ae/recs', async (c) => {
    * reported as `legacy` rather than bucketed with `error:other`, because "cause
    * unknown" and "cause was other" are different claims.
    */
-  const [zero, causes] = await Promise.all([
-    ae(
-      c.env,
-      `SELECT count() AS n FROM rad_fm_events
-       WHERE blob1 = 'recs' AND double1 = 0 AND timestamp > now() - INTERVAL '${hours}' HOUR`
-    ),
+  const [causes] = await Promise.all([
     ae(
       c.env,
       // ONLY the error causes. poolSource also carries the healthy pipeline names
@@ -1068,7 +1107,7 @@ app.get('/ae/recs', async (c) => {
   return c.json({
     ok: true,
     rows: out.data?.data ?? [],
-    zeroTrackRequests: zero.ok === false ? undefined : Number(zero.data?.data?.[0]?.n ?? 0),
+    zeroTrackRequests: (out.data?.data ?? []).reduce((a: number, r: any) => a + Number(r.zeroTracks ?? 0), 0),
     causes:
       causes.ok === false
         ? undefined
