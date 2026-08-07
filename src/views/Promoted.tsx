@@ -210,6 +210,15 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
 
         <div style={{ paddingTop: 14 }}>
           <Prose max={80}>
+            Sleeves are missing here because <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>/admin/promotions</code>{' '}
+            returns <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>appleId</code>{' '}
+            but no artwork, and this dashboard holds no Apple token to resolve one - a request is with the backend.
+            Uniformly absent rather than sometimes present: caching the URL when you promote would put sleeves on the
+            ones made in this browser and not the rest, which is harder to read than none at all.
+          </Prose>
+        </div>
+        <div style={{ paddingTop: 10 }}>
+          <Prose max={80}>
             <strong style={{ fontWeight: 500, color: C.warnText }}>
               Served and listeners are different numbers.
             </strong>{' '}
@@ -311,7 +320,9 @@ function ResultCard({
 /* ── An active or retired promotion ─────────────────────────────────────── */
 
 function PromotionCard({ p, busy, onRetire }: { p: Promotion; busy: boolean; onRetire: () => void }) {
-  const art = artworkUrl(p.artwork, 56);
+  // No sleeve here, uniformly - see the Promotion type. The tile stays so the
+  // row keeps the same shape as a search result, and the panel says why once
+  // rather than each card implying its own image failed.
   const guessed = p.featureSource === 'genre';
   return (
     <div
@@ -325,7 +336,7 @@ function PromotionCard({ p, busy, onRetire }: { p: Promotion; busy: boolean; onR
         borderColor: guessed && p.active ? 'rgba(224,160,48,0.32)' : 'rgba(255,255,255,0.075)'
       }}
     >
-      <Art src={art} size={56} round={p.kind === 'artist'} />
+      <Art src={null} size={56} round={p.kind === 'artist'} />
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>

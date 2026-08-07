@@ -452,7 +452,27 @@ export type Promotion = {
   served: number;
   listeners: number;
   createdAt: string;
-  artwork?: string | null;
+  /**
+   * `appleId` is returned; ARTWORK IS NOT.
+   *
+   * I typed an `artwork` field onto this type from the search response's shape
+   * without checking the list response, so it was permanently undefined and
+   * every promotion rendered the no-sleeve placeholder. The fallback did its job
+   * and that is exactly why it went unnoticed: a graceful degrade hides an
+   * invented field, where a crash would have named it immediately.
+   *
+   * Verified against the live response - the fields are id, kind, appleId, isrc,
+   * name, artistName, targetGenres, featureSource, weight, dailyCapPerUser,
+   * startsAt, endsAt, active, retiredAt, createdAt, served, listeners.
+   *
+   * Deliberately NOT worked around. The dashboard holds no Apple token by
+   * design, so it cannot resolve an id to a sleeve, and caching the URL at
+   * create time would make artwork appear on promotions made in this browser and
+   * not on others - intermittently-present state is worse than uniformly absent.
+   * Requested from the backend instead.
+   */
+  appleId: string;
+  isrc?: string | null;
 };
 
 export const usePromotionSearch = (q: string, kind: 'song' | 'artist', enabled: boolean) =>
