@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid, Panel } from '../components/primitives';
+import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid, Panel, SkelStats } from '../components/primitives';
 import { statValue, useAdminStats, useAePlays } from '../lib/api';
 
 /**
@@ -36,7 +36,7 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
         <strong style={{ fontWeight: 500, color: '#fff' }}>cannot be backfilled</strong>.
       </Callout>
 
-      <Source data={plays} what="Listening history">
+      <Source data={plays} what="Listening history" skeleton={<SkelStats n={4} min={190} />}>
         {(d) => {
           const t = d.totals;
           const p = Number(t?.plays ?? 0);

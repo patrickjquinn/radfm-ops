@@ -182,17 +182,186 @@ export function Loading({ what }: { what: string }) {
   );
 }
 
-/** Renders the three states so no view has to remember to handle `unavailable`. */
+/* ── Loading skeletons ──────────────────────────────────────────────────────
+ *
+ * Placeholders shaped like the thing that is coming, rather than one line of
+ * text that every panel then jumps out of. A cold load used to move every row
+ * on the page twice - once when the text appeared and once when it was replaced
+ * by a table of a completely different height - and on a dashboard you open
+ * because something is wrong, a layout that jumps while you are reading it is
+ * its own small hazard.
+ *
+ * Two rules these must not break:
+ *
+ *   NEVER a number. Not a zero, not a dash, not a plausible-looking figure at
+ *   low opacity. This product's entire premise is that a shown number is a
+ *   measured number, and a skeleton digit is a number that means nothing.
+ *
+ *   NEVER a severity colour. A placeholder cannot be allowed to imply healthy
+ *   or failing before there is a value to justify it.
+ */
+
+/** One shimmering block. Width may be a number (px) or any CSS length. */
+export function Skel({ w, h = 12, r }: { w: number | string; h?: number; r?: number }) {
+  return (
+    <span
+      className="skel"
+      aria-hidden="true"
+      style={{ display: 'block', width: typeof w === 'number' ? `${w}px` : w, height: h, borderRadius: r }}
+    />
+  );
+}
+
+/**
+ * The announcement, kept off screen.
+ *
+ * Swapping "Reading X…" for boxes must not take the message away from anyone
+ * using a screen reader - the boxes are aria-hidden, so without this the panel
+ * would go silent rather than say it is working.
+ */
+function SkelRegion({ what, children }: { what: string; children: React.ReactNode }) {
+  return (
+    <div role="status" aria-busy="true" aria-live="polite">
+      <span
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          overflow: 'hidden',
+          clip: 'rect(0 0 0 0)',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        Reading {what}…
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/** Stands in for `StatGrid`: same card, same padding, same three stacked lines. */
+export function SkelStats({ n = 4, min = 190 }: { n?: number; min?: number }) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(auto-fit,minmax(min(100%,${min}px),1fr))`,
+        gap: GAP
+      }}
+    >
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} style={{ ...CARD, padding: '18px 20px 20px' }}>
+          <div style={{ marginBottom: 12 }}>
+            <Skel w={72} h={9} />
+          </div>
+          {/* Matches the 24px figure line, so nothing shifts when the number lands. */}
+          <Skel w={96} h={24} r={6} />
+          <div style={{ marginTop: 7 }}>
+            <Skel w="60%" h={11} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Stands in for a table body: same 11px vertical padding and same row rule, so
+ * the rows do not move when the real ones arrive.
+ *
+ * `cols` are widths in the order the real table uses them. A `null` entry is the
+ * flexible column; everything else is a fixed right-hand column.
+ */
+export function SkelRows({ rows = 6, cols = [null, 80, 110] }: { rows?: number; cols?: (number | null)[] }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          key={i}
+          style={{ display: 'flex', gap: 14, padding: '11px 0', borderBottom: LINE.row, alignItems: 'center' }}
+        >
+          {cols.map((c, j) =>
+            c == null ? (
+              // Varied widths: a column of identical bars reads as a loading bar,
+              // not as rows of different content.
+              <span key={j} style={{ flex: 1, minWidth: 0 }}>
+                <Skel w={`${52 + ((i * 37) % 44)}%`} h={12} />
+              </span>
+            ) : (
+              <span key={j} style={{ width: c, flex: 'none', display: 'flex', justifyContent: 'flex-end' }}>
+                <Skel w={c - 14} h={12} />
+              </span>
+            )
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Stands in for the label + count + `Bar` rows used by Listening, Growth and Rad. */
+export function SkelBars({ rows = 6 }: { rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} style={{ padding: '10px 0', borderBottom: LINE.row }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 7 }}>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <Skel w={`${46 + ((i * 29) % 40)}%`} h={12} />
+            </span>
+            <Skel w={38} h={12} />
+          </div>
+          <Skel w={`${90 - i * 11}%`} h={3} r={2} />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Stands in for `KeyRow` lists: label left, value right, no bar. */
+export function SkelKeyRows({ rows = 5 }: { rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          key={i}
+          style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 0', borderBottom: LINE.row }}
+        >
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <Skel w={`${40 + ((i * 23) % 34)}%`} h={12} />
+          </span>
+          <Skel w={54} h={13} />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Renders the three states so no view has to remember to handle `unavailable`.
+ *
+ * `skeleton` is what loading looks like. It is optional and falls back to the
+ * old text line, deliberately: a panel with no skeleton yet degrades to "Reading
+ * X…" rather than to a wrong-shaped placeholder, and a wrong-shaped skeleton is
+ * worse than none - it promises a layout that then rearranges.
+ *
+ * Loading and unavailable stay strictly separate. A skeleton means "the answer
+ * is coming"; if the source fails it must become the block that names the source
+ * and the reason, never a placeholder that shimmers forever.
+ */
 export function Source<T>({
   data,
   what,
+  skeleton,
   children
 }: {
   data: Loaded<T>;
   what: string;
+  skeleton?: React.ReactNode;
   children: (d: T) => React.ReactNode;
 }) {
-  if (data.state === 'loading') return <Loading what={what} />;
+  if (data.state === 'loading')
+    return skeleton ? <SkelRegion what={what}>{skeleton}</SkelRegion> : <Loading what={what} />;
   if (data.state === 'unavailable')
     return <Unavailable what={what} reason={data.reason} detail={data.detail} />;
   return <>{children(data.data)}</>;

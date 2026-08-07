@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, GAP } from '../theme';
-import { Callout, Collapsible, Panel, Source } from '../components/primitives';
+import { Callout, Collapsible, Panel, Source, SkelRows } from '../components/primitives';
 import { useAdminAudit } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -21,7 +21,7 @@ export default function Audit({ ctx }: { ctx: Ctx }) {
         {demo ? (
           <Rows rows={fx.auditRows} />
         ) : (
-          <Source data={audit} what="Audit trail">
+          <Source data={audit} what="Audit trail" skeleton={<SkelRows rows={12} cols={[132, 210, null, 150]} />}>
             {(d) => {
               const rows = normalise(d);
               /*

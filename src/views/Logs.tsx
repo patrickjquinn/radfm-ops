@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Callout, Collapsible, Generated, Prose, SectionHead, Source, Panel } from '../components/primitives';
+import { Callout, Collapsible, Generated, Prose, SectionHead, Source, Panel, SkelRows } from '../components/primitives';
 import { useCluster, useLogs, type LogGroup } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -29,7 +29,7 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
         {demo ? (
           <WarnRows rows={warnRows} />
         ) : (
-          <Source data={warn} what="Warnings">
+          <Source data={warn} what="Warnings" skeleton={<SkelRows rows={6} cols={[52, null, 150]} />}>
             {(d) =>
               d.groups && d.groups.length ? (
                 <>
@@ -71,7 +71,7 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
             <NoErrors go={() => ctx.go('traffic')} />
           )
         ) : (
-          <Source data={err} what="Errors">
+          <Source data={err} what="Errors" skeleton={<SkelRows rows={3} cols={[52, null, 150]} />}>
             {(d) =>
               (d.groups && d.groups.length) || (d.events && d.events.length) ? (
                 <>

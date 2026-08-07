@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid, Panel } from '../components/primitives';
+import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid, Panel, SkelStats, SkelBars, Skel } from '../components/primitives';
 import { useStatus4xx, useTraffic } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -25,7 +25,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
       {demo ? (
         <StatGrid items={fx.redStats(demo)} />
       ) : (
-        <Source data={traffic} what="Request metrics">
+        <Source data={traffic} what="Request metrics" skeleton={<SkelStats n={5} min={170} />}>
           {(d) => <StatGrid items={summarise(d.series, four.state === 'ok' ? four.data.rows.total : null)} />}
         </Source>
       )}
@@ -34,7 +34,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
         {demo ? (
           <FourxxRows rows={fx.fourxx(demo)} />
         ) : (
-          <Source data={four} what="4xx breakdown">
+          <Source data={four} what="4xx breakdown" skeleton={<SkelBars rows={6} />}>
             {(d) => {
               const rows = d.rows.rows;
               if (!rows.length)
@@ -78,7 +78,7 @@ export default function Traffic({ ctx }: { ctx: Ctx }) {
         {demo ? (
           <Volume bars={fx.volume(demo)} start={ctx.range === '6h' ? '03:48' : 'yesterday 09:48'} />
         ) : (
-          <Source data={traffic} what="Request volume">
+          <Source data={traffic} what="Request volume" skeleton={<Skel w="100%" h={150} r={8} />}>
             {(d) => <Volume bars={toBars(d.series)} start={`${ctx.range} ago`} />}
           </Source>
         )}

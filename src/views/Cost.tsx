@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Callout, Prose, SectionHead, Source, StatGrid, Panel } from '../components/primitives';
+import { Callout, Prose, SectionHead, Source, StatGrid, Panel, SkelStats } from '../components/primitives';
 import { useArtwork, useCost, type CostRow } from '../lib/api';
 import { STATE } from '../lib/vocabulary';
 
@@ -29,7 +29,7 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
         per-token rate. A gap is usually prompt caching - ours prices every input token uncached, so it reads high.
       </Callout>
 
-      <Source data={cost} what="AI spend">
+      <Source data={cost} what="AI spend" skeleton={<SkelStats n={4} min={190} />}>
         {(d) => {
           const reported = d.models.reduce((a, m) => a + m.reported, 0);
           const computed = d.models.reduce((a, m) => a + (m.computed ?? 0), 0);

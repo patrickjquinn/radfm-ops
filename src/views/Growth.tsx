@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Bar, Callout, Prose, SectionHead, Source, StatGrid, Panel } from '../components/primitives';
+import { Bar, Callout, Prose, SectionHead, Source, StatGrid, Panel, SkelStats, SkelKeyRows } from '../components/primitives';
 import { useActivation, useGrowth, useRevenue } from '../lib/api';
 import { STATE } from '../lib/vocabulary';
 
@@ -27,7 +27,7 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
 
   return (
     <div style={{ display: 'grid', gap: GAP }}>
-      <Source data={growth} what="Growth">
+      <Source data={growth} what="Growth" skeleton={<SkelStats n={4} min={190} />}>
         {(g) => {
           const signups = g.days.reduce((a, d) => a + (d.signups ?? 0), 0);
           const perWeek = g.days.length ? (signups / g.days.length) * 7 : 0;
@@ -121,7 +121,7 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
                 )}
               </Panel>
 
-              <Source data={revenue} what="Revenue">
+              <Source data={revenue} what="Revenue" skeleton={<SkelKeyRows rows={4} />}>
                 {(r) => (
                   <Panel title="Subscriptions" meta={`RevenueCat · checked ${r.checkedAt?.slice(11, 16) ?? '-'}`}>
                     {(r.byProduct ?? []).map((p) => (

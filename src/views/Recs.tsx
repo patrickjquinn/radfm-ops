@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Prose, SectionHead, Source, StatGrid, Panel } from '../components/primitives';
+import { Prose, SectionHead, Source, StatGrid, Panel, SkelStats, SkelRows } from '../components/primitives';
 import { useAeRecs } from '../lib/api';
 import * as fx from '../lib/fixtures';
 import { WEIGHTS_SOURCE, weights } from '../lib/constants';
@@ -14,7 +14,7 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
       {demo ? (
         <StatGrid items={fx.recStats(demo)} />
       ) : (
-        <Source data={recs} what="Recommendation metrics">
+        <Source data={recs} what="Recommendation metrics" skeleton={<SkelStats n={4} min={190} />}>
           {(d) => <StatGrid items={summarise(d.rows)} />}
         </Source>
       )}
@@ -24,7 +24,7 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
         {demo ? (
           <SourceRows rows={fx.recSources(demo)} />
         ) : (
-          <Source data={recs} what="Pool health">
+          <Source data={recs} what="Pool health" skeleton={<SkelRows rows={3} cols={[null, 90, 90, 90]} />}>
             {(d) =>
               d.rows.length ? (
                 <SourceRows
@@ -65,7 +65,7 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
         {demo ? (
           <Empty text="Cause breakdown is live-only." />
         ) : (
-          <Source data={recs} what="Pool collapse causes">
+          <Source data={recs} what="Pool collapse causes" skeleton={<SkelRows rows={3} cols={[null, 60, 70]} />}>
             {(d) =>
               d.causes?.length ? (
                 <CauseRows rows={d.causes} />

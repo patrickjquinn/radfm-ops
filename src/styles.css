@@ -30,6 +30,44 @@ a:hover {
   }
 }
 
+/*
+ * Loading skeletons.
+ *
+ * A sweep, not a pulse. The pulse keyframe above means "this is live" and is
+ * spoken for; reusing it would make a placeholder look like a heartbeat. The
+ * sweep is also directional, which reads as "in progress" rather than "blinking
+ * at you", and it is deliberately slow and low-contrast so a screen full of
+ * them during a cold load is not the loudest thing in the room.
+ *
+ * Never tinted with a severity colour. A skeleton must not be able to imply
+ * "healthy" or "failing" before a number exists to justify it.
+ */
+@keyframes opsSkeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.skel {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.045) 0%,
+    rgba(255, 255, 255, 0.085) 50%,
+    rgba(255, 255, 255, 0.045) 100%
+  );
+  background-size: 200% 100%;
+  animation: opsSkeleton 1.6s linear infinite;
+  border-radius: 5px;
+}
+/* The global reduce-motion rule below kills the sweep; keep the shape visible. */
+@media (prefers-reduced-motion: reduce) {
+  .skel {
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
 ::-webkit-scrollbar {
   width: 9px;
   height: 9px;

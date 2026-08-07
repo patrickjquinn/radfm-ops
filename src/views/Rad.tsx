@@ -1,7 +1,7 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
-import { Bar, Prose, SectionHead, Source, Panel } from '../components/primitives';
+import { Bar, Prose, SectionHead, Source, Panel, SkelBars, SkelRows } from '../components/primitives';
 import { useAeDj, useAeProbe, useAeUpstream } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -37,7 +37,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
         {demo ? (
           <DjRows rows={fx.djReasons(demo)} incident={demo === 'incident'} />
         ) : (
-          <Source data={dj} what="DJ outcomes">
+          <Source data={dj} what="DJ outcomes" skeleton={<SkelBars rows={6} />}>
             {(d) => {
               const rows = d.rows.map((r: any) => ({ reason: String(r.reason || 'ok'), n: Number(r.n ?? 0), share: '' }));
               const total = rows.reduce((a: number, b: any) => a + b.n, 0);
@@ -70,7 +70,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
         {demo ? (
           <UpstreamRows rows={fx.upstream(demo)} />
         ) : (
-          <Source data={upstream} what="Upstream providers">
+          <Source data={upstream} what="Upstream providers" skeleton={<SkelRows rows={3} cols={[null, 70, 90, 80]} />}>
             {(d) =>
               d.rows.length ? (
                 <UpstreamRows

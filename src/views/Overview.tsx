@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { BG, C, CARD, ELEV, FONT, GAP, LINE, MOTION, dot, focusLift, num, stateColour } from '../theme';
 import { Icon } from '../icons';
-import { Generated, KeyRow, SectionHead, Source, Panel } from '../components/primitives';
+import { Generated, KeyRow, SectionHead, Skel, Source, Panel, SkelKeyRows, SkelRows } from '../components/primitives';
 import {
   reasonText,
   statValue,
@@ -81,7 +81,12 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
                 ? 'rgba(255,98,89,0.3)'
                 : verdict.tone === 'warn'
                   ? 'rgba(224,160,48,0.3)'
-                  : 'rgba(63,179,166,0.22)',
+                  : // Loading is NOT teal. Every other branch here falls through to
+                    // the healthy colour, and a "Reading 5 sources" headline wearing
+                    // the healthy border says the thing it is waiting to find out.
+                    verdict.tone === 'loading'
+                    ? 'rgba(255,255,255,0.075)'
+                    : 'rgba(63,179,166,0.22)',
             // A wash of the verdict colour rather than a filled card. The colour
             // still carries the state; it just stops shouting it. Layered OVER
             // the shared card fill, not instead of it - replacing it would make
@@ -91,7 +96,9 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
                 ? 'radial-gradient(120% 140% at 0% 0%, rgba(255,98,89,0.10) 0%, transparent 60%)'
                 : verdict.tone === 'warn'
                   ? 'radial-gradient(120% 140% at 0% 0%, rgba(224,160,48,0.10) 0%, transparent 60%)'
-                  : 'radial-gradient(120% 140% at 0% 0%, rgba(63,179,166,0.09) 0%, transparent 60%)'
+                  : verdict.tone === 'loading'
+                    ? 'none'
+                    : 'radial-gradient(120% 140% at 0% 0%, rgba(63,179,166,0.09) 0%, transparent 60%)'
             }, ${CARD.background as string}`
           }}
         >
@@ -101,7 +108,14 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               minWidth: 0,
               font: `600 clamp(28px,3.4vw,40px)/1.05 ${FONT.display}`,
               letterSpacing: '-0.033em',
-              color: verdict.tone === 'bad' ? C.bad : verdict.tone === 'warn' ? C.warnText : C.ok
+              color:
+                verdict.tone === 'bad'
+                  ? C.bad
+                  : verdict.tone === 'warn'
+                    ? C.warnText
+                    : verdict.tone === 'loading'
+                      ? C.t3
+                      : C.ok
             }}
           >
             {verdict.title}
@@ -182,7 +196,17 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               }}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={dot(d.tone === 'bad' ? C.bad : d.tone === 'warn' ? C.warn : d.tone === 'dim' ? C.t3 : C.ok)} />
+                <span
+                  style={dot(
+                    d.tone === 'bad'
+                      ? C.bad
+                      : d.tone === 'warn'
+                        ? C.warn
+                        : d.tone === 'dim' || d.tone === 'loading'
+                          ? C.t3
+                          : C.ok
+                  )}
+                />
                 <span
                   style={{
                     font: `600 9.5px/1 ${FONT.text}`,
@@ -195,16 +219,27 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
                 </span>
               </span>
               <span style={{ display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
-                <span
-                  style={{
-                    ...num,
-                    font: `500 clamp(26px,2.6vw,32px)/1 ${FONT.mono}`,
-                    letterSpacing: '-0.025em',
-                    color: d.tone === 'bad' ? C.bad : d.tone === 'dim' ? C.t3 : C.t1
-                  }}
-                >
-                  {d.value}
-                </span>
+                {/*
+                  A skeleton, not the '-' this rendered before. A dash here is
+                  the vocabulary for "we asked and got nothing", which is a
+                  measured absence - and we have not asked yet.
+                */}
+                {d.tone === 'loading' ? (
+                  <span style={{ display: 'block', padding: '4px 0' }}>
+                    <Skel w={86} h={28} r={6} />
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      ...num,
+                      font: `500 clamp(26px,2.6vw,32px)/1 ${FONT.mono}`,
+                      letterSpacing: '-0.025em',
+                      color: d.tone === 'bad' ? C.bad : d.tone === 'dim' ? C.t3 : C.t1
+                    }}
+                  >
+                    {d.value}
+                  </span>
+                )}
                 <span style={{ font: `400 12px/1.4 ${FONT.text}`, color: C.t3 }}>{d.label}</span>
                 {/*
                   Direction, only where a comparable prior window exists. Most of
@@ -360,7 +395,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
           {demo ? (
             fx.scaleRows.map((r) => <KeyRow key={r.label} label={r.label} value={r.value} note={r.note} />)
           ) : (
-            <Source data={stats} what="D1 counts">
+            <Source data={stats} what="D1 counts" skeleton={<SkelKeyRows rows={7} />}>
               {(d) => <ScaleRows d={d} />}
             </Source>
           )}
@@ -377,7 +412,7 @@ export default function Overview({ ctx }: { ctx: Ctx }) {
               </div>
             </>
           ) : (
-            <Source data={versions} what="Deploy history">
+            <Source data={versions} what="Deploy history" skeleton={<SkelRows rows={4} cols={[null, 40]} />}>
               {(d) => (
                 <>
                   {d.versions.slice(0, 4).map((v: any) => (

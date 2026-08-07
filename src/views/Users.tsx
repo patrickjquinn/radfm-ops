@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { BG, C, CARD, FONT, LINE, GAP, MOTION, focusLift } from '../theme';
 import { Icon } from '../icons';
-import { ActionButton, Collapsible, Prose, SectionHead, Source, type Tone, toneColor, Panel } from '../components/primitives';
+import { ActionButton, Collapsible, Prose, SectionHead, Source, type Tone, toneColor, Panel, SkelRows, SkelStats } from '../components/primitives';
 import { statValue, useAdminStats, useEntitlement, useUserList, useUserLookup } from '../lib/api';
 import { STATE } from '../lib/vocabulary';
 import * as fx from '../lib/fixtures';
@@ -139,7 +139,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
 
       {!demo && !isNumeric && submitted.length > 2 && canLookup && (
         <Panel title="Matches" meta="admin/users/lookup · operator · 20 rows max">
-          <Source data={lookup} what="User lookup">
+          <Source data={lookup} what="User lookup" skeleton={<SkelRows rows={4} cols={[52, null, 96]} />}>
             {(d) =>
               d.matches.length ? (
                 <>
@@ -186,7 +186,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
       {demo ? (
         <EntitlementCard ctx={ctx} data={fx.entitlement(demo)} header={{ title: 'user 3 · patrick.jm.quinn@gmail.com', sub: 'created 2025-11-02 · owner' }} />
       ) : userId ? (
-        <Source data={ent} what="Entitlement">
+        <Source data={ent} what="Entitlement" skeleton={<SkelStats n={3} min={180} />}>
           {(d) => <EntitlementCard ctx={ctx} data={shape(d)} header={headerOf(d, userId)} />}
         </Source>
       ) : null}
@@ -196,7 +196,7 @@ export default function Users({ ctx }: { ctx: Ctx }) {
         {demo ? (
           <AuditRows rows={fx.entitlement(demo).audit} />
         ) : (
-          <Source data={ent} what="Entitlement audit">
+          <Source data={ent} what="Entitlement audit" skeleton={<SkelRows rows={4} cols={[132, null, 110]} />}>
             {(d) =>
               // Degrades per field: `meta` or `audit` can be null while the rest
               // succeeds. A null section is not "no entitlement".
@@ -662,7 +662,7 @@ function UserList({
           </div>
         </div>
       ) : (
-      <Source data={list} what="User directory">
+      <Source data={list} what="User directory" skeleton={<SkelRows rows={12} cols={[52, null, 96, 96, 104]} />}>
         {(d) =>
           d.users?.length ? (
             <>

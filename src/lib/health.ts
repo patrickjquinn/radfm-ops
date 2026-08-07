@@ -84,7 +84,21 @@ export type Signal = {
 };
 
 export type Verdict = {
-  tone: 'ok' | 'warn' | 'bad';
+  /**
+   * `loading` is a real state, not an absence of one.
+   *
+   * Without it this returned tone 'ok' and the title "Healthy - no signals open"
+   * on a cold load, because `unreadable` counted only sources that had FAILED and
+   * a source still in flight was neither open nor unreadable. So the page opened
+   * by claiming, in large teal type, that every source had read cleanly and none
+   * of them was reporting a problem - before a single one had answered.
+   *
+   * That is this product's own founding bug: a confident green statement resting
+   * on data nobody had. It has to be impossible to reach 'ok' while anything is
+   * still pending, which is why this is a tone rather than a flag the caller can
+   * forget to check.
+   */
+  tone: 'ok' | 'warn' | 'bad' | 'loading';
   title: string;
   sub: string;
   stats: { value: string; label: string; tone: 'plain' | 'bad' | 'dim' }[];
@@ -95,7 +109,8 @@ export type DomainLine = {
   value: string;
   label: string;
   detail: string;
-  tone: 'ok' | 'warn' | 'bad' | 'dim';
+  /** `loading` renders as a skeleton. A dash would read as a measured absence. */
+  tone: 'ok' | 'warn' | 'bad' | 'dim' | 'loading';
   go: ViewId;
   /**
    * Change against the previous comparable period, or null when there is none.
@@ -191,6 +206,13 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   ];
 
   const unreadable = sources.filter((x) => x.s.state === 'unavailable');
+  /**
+   * Sources that have not answered yet. Never turned into signals - "still
+   * loading" is not a finding and would put rows on the page that vanish a
+   * second later - but the verdict is not allowed to conclude anything while
+   * this is non-empty.
+   */
+  const pending = sources.filter((x) => x.s.state === 'loading');
   const signals: Signal[] = [];
 
   // One signal per unreadable source, so the count on the badge, the count in the
@@ -474,7 +496,19 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   if (recsPct != null && recsPct >= RECS_DEGRADED_WARN) badges.recs = { text: `${Math.round(recsPct)}%`, kind: 'warn' };
 
   const bad = open.filter((s) => s.sev === 'bad').length;
-  const verdict: Verdict = unreadable.length
+  /*
+    Order matters: a source that has already FAILED outranks one still in flight,
+    because "we could not read it" is a finding and "we have not read it yet" is
+    not. Only when nothing has failed and something is pending do we say so.
+  */
+  const verdict: Verdict = !unreadable.length && pending.length
+    ? {
+        tone: 'loading',
+        title: `Reading ${pending.length} source${pending.length === 1 ? '' : 's'}`,
+        sub: 'Nothing on this page is a claim yet. The verdict appears once every source has answered.',
+        stats: []
+      }
+    : unreadable.length
     ? {
         // Never "Healthy" on the strength of sources we could not reach. That is a
         // different claim, and only one of them is supported by the data.
@@ -558,9 +592,21 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       domain: 'Engineering',
       value: fourxxTotal != null ? compact(fourxxTotal) : '-',
       label: '4xx in window',
+      /*
+        A dash is this product's word for "we asked and got nothing back". Using
+        it for a source still in flight makes a pending read look like a measured
+        absence, and on a cold load the card read "0 5xx · - warnings" seconds
+        before it read "0 5xx · 500 warnings". Loading says loading.
+      */
       detail:
-        fivexxTotal != null ? `${compact(fivexxTotal)} 5xx · ${warnTotal != null ? compact(warnTotal) : '-'} warnings` : 'traffic unreadable',
-      tone: bad ? 'bad' : open.length ? 'warn' : 'ok',
+        fivexxTotal == null && traffic.state === 'loading'
+          ? 'reading traffic'
+          : fivexxTotal == null
+            ? 'traffic unreadable'
+            : `${compact(fivexxTotal)} 5xx · ${
+                warnTotal != null ? compact(warnTotal) : warn.state === 'loading' ? 'reading' : '-'
+              } warnings`,
+      tone: fourxxTotal == null && four.state === 'loading' ? 'loading' : bad ? 'bad' : open.length ? 'warn' : 'ok',
       go: 'traffic',
       change: null
     },
@@ -568,8 +614,20 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
       domain: 'Data',
       value: playsToday != null ? compact(playsToday) : '-',
       label: 'plays in 24h',
-      detail: listeners != null ? `${listeners} listener${listeners === 1 ? '' : 's'}` : 'play log unreadable',
-      tone: playsToday === 0 && playLogLive ? 'bad' : playsToday != null ? 'ok' : 'dim',
+      detail:
+        listeners != null
+          ? `${listeners} listener${listeners === 1 ? '' : 's'}`
+          : plays.state === 'loading'
+            ? 'reading play log'
+            : 'play log unreadable',
+      tone:
+        playsToday == null && plays.state === 'loading'
+          ? 'loading'
+          : playsToday === 0 && playLogLive
+            ? 'bad'
+            : playsToday != null
+              ? 'ok'
+              : 'dim',
       go: 'listening',
       change: playsChange ? { text: playsChange.text, up: playsChange.up } : null
     },
@@ -582,8 +640,11 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
           ? `${driftCount} in drift`
           : expiring != null
             ? `${expiring} expiring in 7d`
-            : 'RevenueCat unreadable',
-      tone: driftCount ? 'bad' : subs != null ? 'ok' : 'dim',
+            : revenue.state === 'loading' || drift.state === 'loading'
+              ? 'reading RevenueCat'
+              : 'RevenueCat unreadable',
+      tone:
+        subs == null && revenue.state === 'loading' ? 'loading' : driftCount ? 'bad' : subs != null ? 'ok' : 'dim',
       go: 'growth',
       change: null
     }

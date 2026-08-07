@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
-import { Collapsible, Panel, Prose, Source } from '../components/primitives';
+import { Collapsible, Panel, Prose, Source, SkelRows } from '../components/primitives';
 import { useStations, type Station } from '../lib/api';
 
 /**
@@ -65,7 +65,7 @@ export default function Stations({ ctx }: { ctx: Ctx }) {
         {demo ? (
           <Rows rows={rows} />
         ) : (
-          <Source data={stations} what="Stations">
+          <Source data={stations} what="Stations" skeleton={<SkelRows rows={10} cols={[null, 120, 96, 64]} />}>
             {(d) => (d.stations.length ? <Rows rows={d.stations} /> : <Empty text="No stations matched." />)}
           </Source>
         )}
