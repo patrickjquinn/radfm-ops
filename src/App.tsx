@@ -175,9 +175,54 @@ export type Ctx = {
   ownerTokenExpiresInDays: number | null;
 };
 
+/**
+ * The view a URL names, or overview.
+ *
+ * There was no routing at all: `ops.rad-fm.com/logs` served index.html, the SPA
+ * mounted at its default state, and you got Overview under a URL saying /logs -
+ * heading, nav highlight and content all disagreeing with the address bar. It
+ * also meant a view could not be linked, so nobody could send anyone a URL
+ * pointing at the thing they were looking at.
+ *
+ * Unknown paths fall back to overview rather than erroring. A wrong link landing
+ * on the front page is a better outcome than a blank screen, and Access already
+ * guarantees only real operators get this far.
+ */
+const VIEW_IDS: ViewId[] = [
+  'overview', 'traffic', 'logs', 'listening', 'growth', 'cost',
+  'rad', 'recs', 'users', 'stations', 'config', 'audit'
+];
+const viewFromPath = (): ViewId => {
+  const seg = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  return (VIEW_IDS as string[]).includes(seg) ? (seg as ViewId) : 'overview';
+};
+
 export default function App() {
   const qc = useQueryClient();
-  const [view, setView] = useState<ViewId>('overview');
+  const [view, setViewState] = useState<ViewId>(viewFromPath);
+
+  /**
+   * Navigation writes the URL; the URL is not otherwise watched except on Back.
+   *
+   * `?demo=` and the cache-busting query strings this is developed with have to
+   * survive the rewrite, so the search string is carried over verbatim - dropping
+   * it would silently kick you out of demo mode by clicking a nav item.
+   */
+  const setView = (v: ViewId) => {
+    setViewState(v);
+    const path = v === 'overview' ? '/' : `/${v}`;
+    if (window.location.pathname !== path) {
+      window.history.pushState({ v }, '', `${path}${window.location.search}`);
+    }
+  };
+
+  // Back and forward have to move the view, or the browser's own buttons become
+  // a way to make the address bar disagree with the page all over again.
+  useEffect(() => {
+    const onPop = () => setViewState(viewFromPath());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   /**
    * Two windows, held separately, because they are two different questions.
    *

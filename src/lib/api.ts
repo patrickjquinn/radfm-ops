@@ -239,6 +239,26 @@ export const useAeDj = (hours: number) =>
     useQuery({ queryKey: ['ae-dj', hours], queryFn: () => cfGet(`/ae/dj?hours=${hours}`), ...common })
   );
 
+export type DjLine = {
+  text: string;
+  style: string;
+  reason: string;
+  fellBack: boolean;
+  len: number;
+  at: string;
+};
+
+/** What Rad actually said. Only answerable since blob4 landed on 6 Aug. */
+export const useAeDjLines = (hours: number, enabled = true) =>
+  lift<{ rows: DjLine[] }>(
+    useQuery({
+      queryKey: ['ae-dj-lines', hours],
+      queryFn: () => cfGet(`/ae/dj-lines?hours=${hours}`),
+      enabled,
+      ...common
+    })
+  );
+
 export const useAeRecs = (hours: number) =>
   lift<{ rows: any[]; zeroTrackRequests?: number; causes?: { cause: string; n: number }[] }>(
     useQuery({ queryKey: ['ae-recs', hours], queryFn: () => cfGet(`/ae/recs?hours=${hours}`), ...common })

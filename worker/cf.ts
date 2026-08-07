@@ -845,14 +845,78 @@ app.get('/ae/dj', async (c) => {
   const gate = requireToken(c.env);
   if (gate) return c.json(gate);
   const hours = clampHours(c.req.query('hours'), 24);
+  /**
+   * `fellBack` is the only DJ number with direct listener impact.
+   *
+   * The guard rejecting a take costs nothing if the retry succeeds - the listener
+   * hears a good line either way. `fellBack` means it was rejected TWICE and the
+   * listener got a stock line instead. Ranking by rejection volume points at the
+   * wrong thing, and the backend proved it over three days:
+   *
+   *   simile   43 rejections, 0 reached a listener
+   *   stutter   4 rejections, 4 reached a listener - every one
+   *
+   * Simile is ten times the volume and harmless. Stutter was rare and fell back
+   * 100% of the time, because it was rejecting SONG TITLES - "Gone Gone Gone",
+   * "Easy Easy" - and the retry has to announce the same record, so it tripped
+   * identically and fell through to stock every time. This panel showed simile at
+   * the top and stutter near the bottom, which is exactly backwards.
+   *
+   * double3 = regenerated, double4 = fellBack, appended 6 Aug as new positional
+   * slots so historical rows keep their meaning. Rows written before then have
+   * 0 in both, which is indistinguishable from "did not fall back" - hence the
+   * coverage note the view renders.
+   */
   const out = await ae(
     c.env,
-    `SELECT blob3 AS reason, count() AS n FROM rad_fm_events
+    `SELECT blob3 AS reason, count() AS n,
+            sum(double3) AS regenerated, sum(double4) AS fellBack
+     FROM rad_fm_events
      WHERE blob1 = 'dj' AND timestamp > now() - INTERVAL '${hours}' HOUR
      GROUP BY reason ORDER BY n DESC`
   );
   if (out.ok === false) return c.json(out);
   return c.json({ ok: true, rows: groupDjReasons(out.data?.data ?? []) });
+});
+
+/**
+ * What Rad actually said, which until 6 Aug could not be answered at all.
+ *
+ * `trackDjLine` recorded `textLength` - a number - so the only record of the
+ * words was the RAD_SAYS KV, which caps at 10 entries per session and shifts the
+ * oldest off: measured across three days it held 184 of 579 lines, 32%. The
+ * other 395 were simply gone. blob4 is the line itself and has no per-key cap.
+ *
+ * `/ai/text` is deliberately NOT instrumented - it is the internal
+ * character-judging harness, and hundreds of synthetic lines go through it. A
+ * count that looks low against request volume is that, not a gap.
+ */
+app.get('/ae/dj-lines', async (c) => {
+  const gate = requireToken(c.env);
+  if (gate) return c.json(gate);
+  const hours = clampHours(c.req.query('hours'), 24);
+  const out = await ae(
+    c.env,
+    `SELECT blob4 AS text, blob2 AS style, blob3 AS reason,
+            double4 AS fellBack, double1 AS len, timestamp
+     FROM rad_fm_events
+     WHERE blob1 = 'dj' AND blob4 != ''
+       AND timestamp > now() - INTERVAL '${hours}' HOUR
+     ORDER BY timestamp DESC
+     LIMIT 30`
+  );
+  if (out.ok === false) return c.json(out);
+  const rows = (out.data?.data ?? []).map((r: any) => ({
+    text: String(r.text ?? ''),
+    style: String(r.style ?? ''),
+    // Same normalisation as the grouped panel, so a reason reads identically in
+    // both places rather than carrying its parameters in one and not the other.
+    reason: String(r.reason ?? 'ok').replace(/\s*\(.*$/, '').trim() || 'ok',
+    fellBack: Number(r.fellBack ?? 0) > 0,
+    len: Number(r.len ?? 0),
+    at: String(r.timestamp ?? '')
+  }));
+  return c.json({ ok: true, rows });
 });
 
 /**
@@ -866,14 +930,29 @@ app.get('/ae/dj', async (c) => {
  * to log messages, for the same reason: one failure, one row.
  */
 export function groupDjReasons(rows: any[]) {
-  const byReason = new Map<string, number>();
+  const byReason = new Map<string, { n: number; fellBack: number; regenerated: number }>();
   for (const r of rows) {
     const reason = String(r.reason ?? 'ok').replace(/\s*\(.*$/, '').trim() || 'ok';
-    byReason.set(reason, (byReason.get(reason) ?? 0) + Number(r.n ?? 0));
+    const hit = byReason.get(reason) ?? { n: 0, fellBack: 0, regenerated: 0 };
+    hit.n += Number(r.n ?? 0);
+    hit.fellBack += Number(r.fellBack ?? 0);
+    hit.regenerated += Number(r.regenerated ?? 0);
+    byReason.set(reason, hit);
   }
-  return [...byReason.entries()]
-    .map(([reason, n]) => ({ reason, n }))
-    .sort((a, b) => (a.reason === 'ok' ? -1 : b.reason === 'ok' ? 1 : b.n - a.n));
+  return (
+    [...byReason.entries()]
+      .map(([reason, v]) => ({ reason, ...v }))
+      /*
+        `ok` first, then by LISTENER IMPACT, then by volume.
+        
+        This sorted by volume alone, which put a 43-rejection reason that reached
+        nobody above a 4-rejection reason that reached every listener it touched.
+        Ranking is a claim about what matters, and volume was the wrong claim.
+      */
+      .sort((a, b) =>
+        a.reason === 'ok' ? -1 : b.reason === 'ok' ? 1 : b.fellBack - a.fellBack || b.n - a.n
+      )
+  );
 }
 
 /** Recommendation pool health by source. Degraded climbing means silent fallback. */

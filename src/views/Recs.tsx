@@ -33,7 +33,10 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
                     pool: String(Math.round(Number(r.pool ?? 0))),
                     ms: String(Math.round(Number(r.ms ?? 0))),
                     degraded: String(Math.round(Number(r.degraded ?? 0))),
-                    low: Number(r.pool ?? 0) < 400
+                    // Was `< 400`, the same invented floor as the stat card. A
+                    // live source with an empty pool IS a finding; one with 94 is
+                    // just the number this system produces.
+                    low: Number(r.pool ?? 0) === 0 && String(r.source ?? '') !== 'fallback'
                   }))}
                 />
               ) : (
@@ -45,6 +48,16 @@ export default function Recs({ ctx }: { ctx: Ctx }) {
           </Source>
         )}
         <div style={{ paddingTop: 14 }}>
+          <Prose>
+            <strong style={{ fontWeight: 500, color: C.warnText }}>There is no pool floor in the running code.</strong>{' '}
+            This panel used to flag anything under 400 as a shortfall; that number came from a handover note of mine
+            that called it documented, and no such constant exists in the backend. Measured instead: over three days,
+            348 sets averaged 86 with a range of 67 to 115, and none has ever exceeded 115. Either 400 was transcribed
+            from something stale, or the pool is structurally about 4x short - those need opposite fixes and this view
+            cannot tell them apart.{' '}
+          </Prose>
+        </div>
+        <div style={{ paddingTop: 10 }}>
           <Prose>
             Degraded climbing means the orchestrator is falling back. It degrades gracefully, so nothing throws - this
             table is the only way to see it.
@@ -200,10 +213,29 @@ function summarise(rows: any[]) {
       tone: degPct > 10 ? ('warn' as const) : ('plain' as const)
     },
     {
+      /**
+       * No threshold, because there is no floor to compare against.
+       *
+       * This read "below the 400 floor" in amber on every load. The 400 came from
+       * my own handover doc, which called it "a documented 400 floor" - and there
+       * is no such document. The backend grepped the running code for POOL_FLOOR,
+       * MIN_POOL and anything like them and found nothing. So the panel was
+       * asserting a fault against a number I invented and then described as
+       * documented, which is the precise thing this dashboard exists to catch.
+       *
+       * It was also an alarm that could never clear: over three days, 348 sets
+       * averaged 86 with a range of 67-115, and not one has ever reached 400.
+       * An amber state that is permanently on is indistinguishable from a broken
+       * indicator, and it trains you to ignore the colour.
+       *
+       * What replaces it is the measured range and an open question, because
+       * there genuinely are two readings - the number is stale, or the pool is
+       * under-provisioned by roughly 4x - and they need opposite responses.
+       */
       label: 'Pool size avg',
       value: String(Math.round(pool)),
-      context: pool < 400 ? 'live sources only · below the 400 floor' : 'live sources only · healthy',
-      tone: pool < 400 ? ('warn' as const) : ('plain' as const)
+      context: 'live sources only · no floor defined in code',
+      tone: 'plain' as const
     },
     { label: 'Processing p50', value: `${Math.round(ms)}ms`, context: 'mean of per-source averages', tone: 'plain' as const }
   ];

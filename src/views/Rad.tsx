@@ -1,8 +1,8 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
-import { Bar, Prose, SectionHead, Source, Panel, SkelBars, SkelRows } from '../components/primitives';
-import { useAeDj, useAeProbe, useAeUpstream } from '../lib/api';
+import { Bar, Collapsible, Prose, SectionHead, Source, Panel, SkelBars, SkelRows } from '../components/primitives';
+import { useAeDj, useAeDjLines, useAeProbe, useAeUpstream, type DjLine } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
 export default function Rad({ ctx }: { ctx: Ctx }) {
@@ -10,6 +10,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
   const probe = useAeProbe();
   const dj = useAeDj(ctx.hours);
   const upstream = useAeUpstream(ctx.hours);
+  const lines = useAeDjLines(ctx.hours, !demo);
 
   // Unverified is a first-class state. Rendering a plausible-looking chart from a
   // source nobody has confirmed is the worst thing this dashboard could do, so
@@ -28,10 +29,12 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
 
       <Panel title="DJ line outcomes by reason" meta="rad_fm_events · blob3">
         <div style={{ padding: '11px 0 4px' }}>
-          <Prose max={74}>
-            A rising share of non-<code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>ok</code>{' '}
-            means the degeneracy guard is rejecting more takes. Regressions here are otherwise only detectable by
-            listening to the radio.
+          <Prose max={78}>
+            A rejection costs nothing if the retry succeeds. What matters is{' '}
+            <strong style={{ fontWeight: 500, color: C.warnText }}>reached a listener</strong> - the guard rejected
+            twice and a stock line went out instead. Rows are ranked by that, not by volume: across three days
+            simile was rejected 43 times and reached nobody, while stutter was rejected 4 times and reached a
+            listener every time, because it was tripping on song titles the retry had to repeat.
           </Prose>
         </div>
         {demo ? (
@@ -39,19 +42,78 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
         ) : (
           <Source data={dj} what="DJ outcomes" skeleton={<SkelBars rows={6} />}>
             {(d) => {
-              const rows = d.rows.map((r: any) => ({ reason: String(r.reason || 'ok'), n: Number(r.n ?? 0), share: '' }));
+              const rows = d.rows.map((r: any) => ({
+                reason: String(r.reason || 'ok'),
+                n: Number(r.n ?? 0),
+                fellBack: Number(r.fellBack ?? 0),
+                share: ''
+              }));
               const total = rows.reduce((a: number, b: any) => a + b.n, 0);
               if (!total) return <Empty text="No DJ events in this window." />;
+              const anyFellBack = rows.some((r: any) => r.fellBack > 0);
               return (
-                <DjRows
-                  rows={rows.map((r: any) => ({ ...r, share: `${((r.n / total) * 100).toFixed(1)}%` }))}
-                  incident={false}
-                />
+                <>
+                  <DjRows
+                    rows={rows.map((r: any) => ({ ...r, share: `${((r.n / total) * 100).toFixed(1)}%` }))}
+                    incident={false}
+                  />
+                  {/*
+                    Zero fallbacks and "we were not recording fallbacks" are
+                    different claims. The slot was appended on 6 Aug, so rows
+                    written before it read 0 and look identical to a clean window.
+                  */}
+                  {!anyFellBack && (
+                    <div style={{ paddingTop: 12 }}>
+                      <Prose max={78}>
+                        No line in this window fell back to stock. Rows written before 6 Aug carry no fallback
+                        figure and read as 0 here, so on a window reaching back past that date this is not yet
+                        evidence that none did.
+                      </Prose>
+                    </div>
+                  )}
+                </>
               );
             }}
           </Source>
         )}
       </Panel>
+
+      {/*
+        What Rad actually said, which this dashboard could not answer until 6 Aug.
+        
+        `trackDjLine` recorded textLength - a number - so the only record of the
+        words was the RAD_SAYS KV, which caps at 10 entries per session and shifts
+        the oldest off: across three days it held 184 of 579 lines, 32%, and the
+        other 395 were gone. blob4 is the line itself, with no per-key cap.
+        
+        Every other panel in this product measures whether the machinery worked.
+        This is the only one that shows the output a listener actually heard, and
+        a DJ line can be well-formed, fast, non-degenerate and still bad.
+      */}
+      {!demo && (
+        <Panel title="What Rad said" meta="rad_fm_events · blob4 · newest 30">
+          <Source data={lines} what="DJ lines" skeleton={<SkelRows rows={6} cols={[null, 90, 70]} />}>
+            {(d) =>
+              d.rows.length ? (
+                <>
+                  <LineRows rows={d.rows} />
+                  <div style={{ paddingTop: 12 }}>
+                    <Prose max={78}>
+                      <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>/ai</code> is
+                      the instrumented path;{' '}
+                      <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>/ai/text</code>{' '}
+                      is the internal character-judging harness and is deliberately not instrumented, so a synthetic
+                      run never appears here. A count that looks low against request volume is that, not a gap.
+                    </Prose>
+                  </div>
+                </>
+              ) : (
+                <Empty text="No lines recorded in this window. blob4 was added on 6 Aug, so a window reaching back past it will be short or empty." />
+              )
+            }
+          </Source>
+        </Panel>
+      )}
 
       <Panel title="Upstream providers" meta="trackUpstream">
         {/*
@@ -133,7 +195,13 @@ function UnverifiedBanner({ detail }: { detail?: string }) {
   );
 }
 
-function DjRows({ rows, incident }: { rows: { reason: string; n: number; share: string }[]; incident: boolean }) {
+function DjRows({
+  rows,
+  incident
+}: {
+  rows: { reason: string; n: number; share: string; fellBack?: number }[];
+  incident: boolean;
+}) {
   const max = Math.max(...rows.map((r) => r.n), 1);
   return (
     <>
@@ -162,10 +230,23 @@ function DjRows({ rows, incident }: { rows: { reason: string; n: number; share: 
             <span style={{ width: 52, textAlign: 'right', font: `400 11.5px/1.2 ${FONT.mono}`, color: 'rgba(255,255,255,0.5)' }}>
               {d.share}
             </span>
+            {/* The consequence column. Red when non-zero, because unlike the
+                rejection count this one describes something a listener heard. */}
+            <span
+              style={{
+                ...num,
+                width: 116,
+                textAlign: 'right',
+                font: `500 11.5px/1.2 ${FONT.mono}`,
+                color: d.fellBack ? C.bad : C.t3
+              }}
+            >
+              {d.reason === 'ok' ? '' : d.fellBack ? `${d.fellBack} reached` : '0 reached'}
+            </span>
           </div>
           <Bar
             pct={(d.n / max) * 100}
-            color={d.reason === 'ok' ? C.okDim : incident ? C.warn : 'rgba(255,255,255,0.28)'}
+            color={d.reason === 'ok' ? C.okDim : d.fellBack ? C.bad : incident ? C.warn : 'rgba(255,255,255,0.28)'}
           />
         </div>
       ))}
@@ -267,6 +348,67 @@ function UpstreamRows({
 const Cell = ({ w, value, color, weight = 400 }: { w: number; value: string; color: string; weight?: number }) => (
   <span style={{ ...num, width: w, textAlign: 'right', font: `${weight} 12.5px/1.2 ${FONT.mono}`, color }}>{value}</span>
 );
+
+/**
+ * One line as it went out, with the reason it was regenerated beside it.
+ *
+ * The line is the content, so it gets the room and the readable face. Everything
+ * else - style, reason, length - is metadata and recedes. A fallback is called
+ * out in words rather than by colour alone, because it is the one row here where
+ * what the listener heard is not what is printed.
+ */
+function LineRows({ rows }: { rows: DjLine[] }) {
+  return (
+    <Collapsible
+      rows={rows}
+      initial={6}
+      noun="lines"
+      render={(r, i) => (
+        <div key={`${r.at}-${i}`} style={{ padding: '12px 0', borderBottom: LINE.row }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <span style={{ flex: '1 1 340px', minWidth: 0, font: `400 13px/1.55 ${FONT.text}`, color: 'rgba(255,255,255,0.88)' }}>
+              {r.text}
+            </span>
+            <span style={{ display: 'flex', gap: 10, alignItems: 'baseline', flex: 'none' }}>
+              {/*
+                blob2 is documented as `style` and reads back as "dj" - the event
+                type - on every live row. Rather than print an unexplained value
+                under a label it may not deserve, it is not shown until that slot
+                is confirmed against a real row, the same standing this file
+                already gives the unverified upstream doubles.
+              */}
+              {r.reason !== 'ok' && (
+                <span
+                  style={{
+                    padding: '1px 6px',
+                    borderRadius: 4,
+                    font: `500 10px/1.5 ${FONT.mono}`,
+                    background: r.fellBack ? 'rgba(255,98,89,0.14)' : 'rgba(224,160,48,0.14)',
+                    color: r.fellBack ? C.bad : C.warnText
+                  }}
+                >
+                  {r.reason}
+                </span>
+              )}
+              {r.fellBack && (
+                <span style={{ font: `500 10.5px/1.4 ${FONT.mono}`, color: C.bad }}>stock line sent</span>
+              )}
+              {/*
+                textLength is CHARACTERS. This rendered "171w", which reads as a
+                171-WORD line - roughly a minute of speech for something that is
+                actually two sentences. A unit invented on the label is the same
+                defect as a wrong number.
+              */}
+              <span style={{ ...num, width: 62, textAlign: 'right', font: `400 11px/1.4 ${FONT.mono}`, color: C.t3 }}>
+                {r.len} chars
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
+    />
+  );
+}
 
 const Empty = ({ text }: { text: string }) => (
   <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)' }}>{text}</div>
