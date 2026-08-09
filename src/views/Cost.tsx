@@ -55,7 +55,10 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
           const requests = d.models.reduce((a, m) => a + m.requests, 0);
           const unpriced = d.models.filter((m) => m.unpriced);
           const unpricedCalls = unpriced.reduce((a, m) => a + m.requests, 0);
-          const perDay = (reported / d.hours) * 24;
+          // Artwork is measured, so it belongs in the run rate. `useArtwork` is
+          // requested over the same window, so the two are comparable.
+          const artworkCost = artwork.state === 'ok' ? Number(artwork.data.cost ?? 0) : 0;
+          const perDay = ((reported + artworkCost) / d.hours) * 24;
           /*
             The gateway counted image calls and the backend's own artwork event
             counted none, in the same window, on the same screen. The page said
@@ -77,9 +80,30 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
                 min={190}
                 items={[
                   {
-                    label: 'Gateway cost',
-                    value: money(reported),
-                    context: `over ${d.hours}h · ${requests.toLocaleString()} requests`,
+                    /*
+                      The headline must include everything we have measured.
+                      
+                      This read the gateway total alone - and station artwork,
+                      which the backend measures and which this very page shows
+                      in its own panel, was MORE THAN DOUBLE it. $2.20 gateway
+                      against $5.00 of artwork, with "Run rate $0.31/day" as the
+                      figure anyone would budget from.
+                      
+                      The prose said so. The number did not, and numbers win. A
+                      confident total with a caveat beside it is the exact shape
+                      of the failure this dashboard exists to refuse, and this
+                      page was committing it about its own subject.
+                      
+                      Speech stays outside the total because it is genuinely not
+                      measured anywhere - Speechify does not route through the
+                      gateway. Unmeasured and excluded are different from
+                      measured and excluded, and only the second was a bug.
+                    */
+                    label: 'Known spend',
+                    value: money(reported + artworkCost),
+                    context: artworkCost
+                      ? `text ${money(reported)} · artwork ${money(artworkCost)} · speech not measured`
+                      : `text only · artwork and speech not measured`,
                     tone: 'plain'
                   },
                   {
@@ -99,7 +123,10 @@ export default function Cost({ ctx }: { ctx: Ctx }) {
                     // limit is a backstop or a ceiling you are about to hit.
                     label: 'Run rate',
                     value: `${money(perDay)}/day`,
-                    context: `≈ ${money(perDay * 30)}/month at this rate`,
+                    // Includes artwork, so it is a rate you could budget from -
+                    // it excluded the larger half before. Still a floor, because
+                    // speech is unmeasured.
+                    context: `≈ ${money(perDay * 30)}/month · a floor, speech not included`,
                     tone: perDay > 4 ? 'bad' : perDay > 1 ? 'warn' : 'plain'
                   }
                 ]}

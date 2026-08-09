@@ -32,6 +32,25 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
           const signups = g.days.reduce((a, d) => a + (d.signups ?? 0), 0);
           const perWeek = g.days.length ? (signups / g.days.length) * 7 : 0;
           const act = activation.state === 'ok' ? activation.data.byDay.reduce((a, d) => a + d.activated, 0) : null;
+          /**
+           * A transition count cannot exceed the base it transitions.
+           *
+           * The backend reports 769 premium ENDS on a day with 20 active
+           * subscriptions and 639 registered users. That is 38x the entire paid
+           * base, sustained across three days (769, 767, 573), so it is not
+           * churn - almost certainly `premium_audit` recording every reconcile
+           * CHECK rather than every change, which is the same
+           * "recorded that it looked, not what it decided" problem the note
+           * under this panel already describes for the pre-6-Aug rows.
+           *
+           * Rendering it plainly makes this dashboard the thing that reports a
+           * business catastrophe that did not happen. The bound is the live
+           * subscriber count, generously multiplied - anything under it renders
+           * normally, anything over is marked as not-a-transition-count.
+           */
+          const subs = revenue.state === 'ok' ? Number(revenue.data.activeSubscriptions ?? 0) : 0;
+          const implausibleAbove = subs > 0 ? subs * 3 : Infinity;
+          const implausibleDays = g.days.filter((d) => (d.premiumEnds ?? 0) > implausibleAbove).length;
 
           return (
             <>
@@ -77,7 +96,7 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
               />
 
               <Panel title="Signups by day" meta={`users.created_at · since ${g.since.signups.slice(0, 10)}`}>
-                <DayRows rows={g.days} />
+                <DayRows rows={g.days} implausibleAbove={implausibleAbove} />
                 {/*
                   Two transitions columns exist and are null for every historical
                   row. That is migration 0004 landing today, and the backend chose
@@ -85,6 +104,23 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
                   revocations that never happened. Saying which is the difference
                   between "nothing changed" and "we were not recording".
                 */}
+                {implausibleDays > 0 && (
+                  <div style={{ paddingTop: 12 }}>
+                    <Prose>
+                      <strong style={{ fontWeight: 500, color: C.bad }}>
+                        These transition counts cannot be transitions.
+                      </strong>{' '}
+                      {implausibleDays} day{implausibleDays === 1 ? '' : 's'} report more premium endings than there are
+                      premium accounts - the largest is {Math.max(...g.days.map((d) => d.premiumEnds ?? 0)).toLocaleString()}{' '}
+                      against {subs} active subscription{subs === 1 ? '' : 's'}. A base of {subs} cannot lose that many,
+                      so this is not churn. The likeliest reading is that{' '}
+                      <code style={{ font: `400 11.5px/1 ${FONT.mono}`, color: 'rgba(255,255,255,0.7)' }}>premium_audit</code>{' '}
+                      is recording every reconcile check rather than every change - the same "recorded that it looked,
+                      never what it decided" problem described below for the older rows. Raised with the backend; do not
+                      read these as revocations.
+                    </Prose>
+                  </div>
+                )}
                 <div style={{ paddingTop: 12 }}>
                   <Prose>
                     Premium starts and ends are recorded from{' '}
@@ -177,7 +213,13 @@ export default function Growth({ ctx }: { ctx: Ctx }) {
   );
 }
 
-function DayRows({ rows }: { rows: { day: string; signups: number; premiumStarts: number | null; premiumEnds: number | null }[] }) {
+function DayRows({
+  rows,
+  implausibleAbove = Infinity
+}: {
+  rows: { day: string; signups: number; premiumStarts: number | null; premiumEnds: number | null }[];
+  implausibleAbove?: number;
+}) {
   const recent = rows.slice(-21);
   const max = Math.max(...recent.map((r) => r.signups), 1);
   return (
@@ -188,8 +230,20 @@ function DayRows({ rows }: { rows: { day: string; signups: number; premiumStarts
             <span style={{ width: 92, flex: 'none', font: `400 12px/1.2 ${FONT.mono}`, color: C.t2 }}>{r.day}</span>
             <span style={{ flex: 1 }} />
             <span style={{ ...num, font: `500 13px/1.2 ${FONT.mono}`, color: C.t1 }}>{r.signups}</span>
-            <span style={{ width: 110, textAlign: 'right', font: `400 11px/1.2 ${FONT.mono}`, color: C.t3 }}>
-              {r.premiumStarts == null ? STATE.notRecorded : `+${r.premiumStarts} / -${r.premiumEnds ?? 0}`}
+            {/* Flagged, not hidden. The figure is what the backend returned and
+                deleting it would be its own dishonesty - but it must not read as
+                a measured business event. */}
+            <span
+              style={{
+                width: 110,
+                textAlign: 'right',
+                font: `400 11px/1.2 ${FONT.mono}`,
+                color: (r.premiumEnds ?? 0) > implausibleAbove ? C.bad : C.t3
+              }}
+            >
+              {r.premiumStarts == null
+                ? STATE.notRecorded
+                : `+${r.premiumStarts} / -${r.premiumEnds ?? 0}${(r.premiumEnds ?? 0) > implausibleAbove ? ' ?' : ''}`}
             </span>
           </div>
           <Bar pct={(r.signups / max) * 100} color={C.okDim} />
