@@ -13,7 +13,8 @@ import type { Ctx } from './types';
  * Analytics Engine slot mapping (from the backend's src/lib/analytics.ts):
  *
  *   blob1 = event type ('recs' | 'dj' | 'upstream' | 'play')
- *   dj:    blob2 = style,  blob3 = degeneracyReason
+ *   dj:    blob2 = style,  blob3 = degeneracyReason, blob4 = text,
+ *          blob5 = session, blob6 = the REJECTED take (fallback rows only)
  *   recs:  blob2 = source, double2 = poolSize, double3 = processingMs,
  *          double7 = degraded
  *
@@ -987,6 +988,7 @@ app.get('/ae/dj-lines', async (c) => {
     // Same normalisation as the grouped panel, so a reason reads identically in
     // both places rather than carrying its parameters in one and not the other.
     reason: String(r.reason ?? 'ok').replace(/\s*\(.*$/, '').trim() || 'ok',
+    rejected: String(r.rejected ?? ''),
     fellBack: Number(r.fellBack ?? 0) > 0,
     len: Number(r.len ?? 0),
     at: String(r.timestamp ?? '')

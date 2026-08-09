@@ -46,24 +46,10 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
   const promos = list.state === 'ok' ? list.data.promotions : [];
   const active = promos.filter((p) => p.active);
   /*
-    Already-promoted, matched two ways, mirroring the backend's own index.
-
-    A result that would 409 says so instead of offering a button that cannot
-    work. `appleId` is the obvious key - but Apple routinely lists one recording
-    under several ids (two of ten in a single search, measured by the backend),
-    and those share an ISRC. Promoting both used to be allowed and gave one
-    recording two independent daily caps: up to 4 plays a day against a cap
-    reading 2. The pool already deduped by ISRC so nobody ever heard it twice in
-    a set; the damage was entirely to the allowance.
-
-    The backend now blocks it at a partial unique index on `isrc` where
-    `active = 1 AND isrc IS NOT NULL`, so this mirrors exactly that: ACTIVE
-    promotions only, and ISRC only where both sides have one. Everything else
-    falls back to appleId, which for an artist promotion is the best key there is.
+    The mirror is gone. `promotedAs` on each search result is the backend
+    answering from the side that owns both partial indexes, in their order of
+    authority, and staying correct when they change.
   */
-  const blockedBy = (r: PromoSearchResult): Promotion | null =>
-    active.find((p) => p.appleId === r.appleId || (!!r.isrc && !!p.isrc && p.isrc === r.isrc)) ?? null;
-
   return (
     <div style={{ display: 'grid', gap: GAP }}>
       <Callout tone="teal" icon>
@@ -213,7 +199,7 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
                       key={r.appleId}
                       r={r}
                       kind={kind}
-                      blocking={blockedBy(r)}
+                      blocking={r.promotedAs ?? null}
                       busy={create.isPending}
                       onPromote={(opts) =>
                         create.mutate({
@@ -322,16 +308,19 @@ function ResultCard({
 }: {
   r: PromoSearchResult;
   kind: 'song' | 'artist';
-  /** The active promotion that would block this save, if any. */
-  blocking: Promotion | null;
+  /** The promotion that would block this save, as the backend reports it. */
+  blocking: NonNullable<PromoSearchResult['promotedAs']> | null;
   busy: boolean;
   onPromote: (opts: PromoOpts) => void;
 }) {
   const alreadyPromoted = Boolean(blocking);
-  // Same recording under a DIFFERENT catalogue id. Worth distinguishing: a row
+  // Which index caught it, straight from the API rather than inferred. A row
   // with another name and another sleeve reading "promoted" is confusing unless
   // it says why.
-  const sameRecording = Boolean(blocking && blocking.appleId !== r.appleId);
+  const sameRecording = blocking?.matchedOn === 'isrc' && blocking.appleId !== r.appleId;
+  // Blocks either way - the indexes ignore starts_at/ends_at - but saying
+  // "promoted" about something not yet on air would be its own small lie.
+  const scheduled = Boolean(blocking && !blocking.live);
   const [open, setOpen] = useState(false);
   const [weight, setWeight] = useState(1);
   const [cap, setCap] = useState(2);
@@ -376,9 +365,10 @@ function ResultCard({
             // page, so saying it is cheaper than making them click to find out.
             <span
               title={
-                sameRecording
+                (sameRecording
                   ? `Already promoted as "${blocking!.name}" (Apple id ${blocking!.appleId}). Apple lists this recording under more than one id; both share ISRC ${r.isrc}.`
-                  : 'Already promoted.'
+                  : `Already promoted as "${blocking!.name}".`) +
+                (scheduled ? ' Scheduled rather than live - it still holds the slot.' : '')
               }
               style={{
                 padding: '7px 13px',
@@ -391,7 +381,7 @@ function ResultCard({
                 whiteSpace: 'nowrap'
               }}
             >
-              {sameRecording ? 'same recording' : 'promoted'}
+              {scheduled ? 'scheduled' : sameRecording ? 'same recording' : 'promoted'}
             </span>
           ) : (
             <>

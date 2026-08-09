@@ -246,6 +246,11 @@ export type DjLine = {
   text: string;
   style: string;
   session: string;
+  /**
+   * The take the guard threw away, on rows where it fell back. Empty on rows
+   * written before 9 Aug, and on rows that never fell back.
+   */
+  rejected: string;
   reason: string;
   fellBack: boolean;
   len: number;
@@ -438,6 +443,31 @@ export type PromoSearchResult = {
   releaseDate?: string | null;
   genres: string[];
   artwork?: string | null;
+  /**
+   * The promotion that would block this save, answered by the side that owns
+   * the indexes.
+   *
+   * This was mirrored client-side: match the active list on appleId, then on
+   * isrc where both had one. That mirror could never be faithful - we only know
+   * the ISRC of records we have searched, not of every promotion ever made.
+   *
+   * It was also wrong in a way I got backwards. I worried a scheduled-but-not-
+   * yet-live promotion would be shown as blocking when it was not; in fact both
+   * indexes are partial on `active = 1` and ignore starts_at/ends_at entirely,
+   * so it really does hold the slot and really will 409. The mirror was right by
+   * accident. `live` now lets the UI say "promoted, starts Tuesday" instead of
+   * implying it is on air - while still blocking, because it does.
+   *
+   * `matchedOn` says which index caught it, so a same-recording clash can be
+   * explained before the click rather than after.
+   */
+  promotedAs?: {
+    id: number;
+    name: string;
+    appleId: string;
+    live: boolean;
+    matchedOn: 'isrc' | 'apple_id';
+  } | null;
 };
 
 export type Promotion = {

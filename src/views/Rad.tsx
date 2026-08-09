@@ -448,6 +448,43 @@ function LineRows({ rows, chronological }: { rows: DjLine[]; chronological: bool
               </span>
             </span>
           </div>
+
+          {/*
+            What the guard threw away, beside what the listener actually heard.
+
+            blob4 holds whatever AIRED - so on a fallback it is the canned line,
+            and the one row recording a failure recorded everything except the
+            thing that failed. The backend reconstructed two guard bugs from a
+            quoted word plus a guess at the surrounding line, and said plainly
+            that is not a method. blob6 makes "why did this trip?" a column.
+
+            Rows written before 9 Aug carry nothing here, which is why this is
+            conditional rather than an empty block on every fallback.
+          */}
+          {r.fellBack && r.rejected && (
+            <div
+              style={{
+                marginTop: 9,
+                marginLeft: chronological ? 34 : 0,
+                paddingLeft: 11,
+                borderLeft: `2px solid ${C.bad}`,
+                display: 'grid',
+                gap: 3
+              }}
+            >
+              <span
+                style={{
+                  font: `600 9px/1 ${FONT.text}`,
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: C.bad
+                }}
+              >
+                Rejected take
+              </span>
+              <span style={{ font: `400 12.5px/1.55 ${FONT.text}`, color: C.t2 }}>{r.rejected}</span>
+            </div>
+          )}
         </div>
       )}
     />
