@@ -14,21 +14,21 @@
   },
   "dependencies": {
     "@carbon/icons-react": "^11.85.0",
-    "@tanstack/react-query": "^5.62.0",
-    "hono": "^4.6.14",
+    "@tanstack/react-query": "^5.101.4",
+    "hono": "^4.13.1",
     "jose": "^6.2.8",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.0.0",
-    "@cloudflare/workers-types": "^5.20260730.1",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.7",
-    "vitest": "^3.2.7",
-    "wrangler": "^4.20.0"
+    "@cloudflare/vite-plugin": "^1.51.1",
+    "@cloudflare/workers-types": "^5.20260809.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.120.0"
   }
 }

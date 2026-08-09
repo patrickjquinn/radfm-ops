@@ -25,9 +25,9 @@ Everything in the spec sections was checked against the live system on 5 August 
 ## Running it
 
 ```bash
-npm install
+bun install
 cp .dev.vars.example .dev.vars    # fill in CLOUDFLARE_API_TOKEN
-npm run dev                       # workerd locally, so dev matches prod
+bun run dev                       # workerd locally, so dev matches prod
 ```
 
 Without a Cloudflare API token every panel renders **"unavailable"** with the reason - that is
@@ -54,7 +54,7 @@ machine, not per tab.
 **Worker-held (recommended for the sole operator).** Set it once and no one pastes anything:
 
 ```bash
-npx wrangler secret put OPS_BACKEND_JWT     # paste the owner JWT when prompted
+bunx wrangler secret put OPS_BACKEND_JWT     # paste the owner JWT when prompted
 ```
 
 `OPS_OWNER_EMAIL` in `wrangler.jsonc` guards it: the Worker attaches that token **only**
@@ -97,7 +97,7 @@ Verified after deploy: an anonymous request to `/api/session`, `/api/cf/ae/probe
 **302 to the Access login** for the correct AUD. Nothing - not even the SPA shell - is served
 without authenticating.
 
-Redeploying: `npm run deploy`. **Never revert `ACCESS_AUD` to the placeholder** - that re-enables
+Redeploying: `bun run deploy`. **Never revert `ACCESS_AUD` to the placeholder** - that re-enables
 the local-dev bypass, and while `worker/access.ts` refuses to serve on a non-local host if it
 happens, relying on that is not the same as configuring it.
 

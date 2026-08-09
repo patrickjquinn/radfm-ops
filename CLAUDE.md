@@ -29,16 +29,33 @@ Everything in the spec documents was verified against the live system on 5 Augus
 ## Commands
 
 ```bash
-npm run dev          # Vite + workerd (localhost:5173), so dev matches prod
-npm run build        # SPA to dist/client, Worker to dist/radfm_ops
-npm run typecheck    # tsc --noEmit
-npm run deploy       # vite build && wrangler deploy
-npx wrangler deploy --dry-run   # verify bindings without shipping
+bun install          # bun.lock is the lockfile; there is no package-lock.json
+bun run dev          # Vite + workerd (localhost:5173), so dev matches prod
+bun run build        # SPA to dist/client, Worker to dist/radfm_ops
+bun run typecheck    # tsc --noEmit
+bun run test         # vitest, via vitest.config.ts - NOT vite.config.ts, see below
+bun run deploy       # vite build && wrangler deploy
+bunx wrangler deploy --dry-run  # verify bindings without shipping
 ```
 
 There are no tests yet. `?demo=healthy` and `?demo=incident` render the design against fixtures - that is currently the only way to exercise the populated states, and it is how to check a UI change without a token.
 
-Ops commands that touch the live system live in the **backend repo** (`cd ~/Developer/rad-fm-backend`, which uses `bun`/`bunx`):
+Both repos use `bun`. This one was on npm until 9 Aug 2026; the switch is
+package-manager only - nothing about the toolchain or the deploy changed with it.
+
+Two things bun surfaced that npm had been doing silently:
+
+- **`@carbon/icons-react` and `@carbon/icon-helpers` run IBM telemetry on
+  postinstall.** bun blocks lifecycle scripts by default and these are left
+  blocked. Do not `bun pm trust` them without a reason.
+- **`vitest` needs its own config.** It used to inherit `vite.config.ts`, which
+  loads the Cloudflare plugin and starts workerd for a suite of pure functions.
+  Vite 8 made that an error rather than merely wasteful, so `vitest.config.ts`
+  now exists and deliberately omits the plugin. This is also why `vitest run` no
+  longer hangs on exit.
+
+Ops commands that touch the live system live in the **backend repo**
+(`cd ~/Developer/rad-fm-backend`):
 
 ```bash
 bunx wrangler d1 execute RAD_USERS --remote --command "<sql>"   # ad-hoc D1, one query at a time
