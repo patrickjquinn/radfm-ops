@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Callout, Collapsible, Generated, Prose, SectionHead, Source, Panel, SkelRows } from '../components/primitives';
+import { Callout, Collapsible, Generated, Prose, SectionHead, Source, Panel, SkelRows, Empty, relativeAge } from '../components/primitives';
 import { useCluster, useLogs, type LogGroup } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -146,7 +146,7 @@ export default function Logs({ ctx }: { ctx: Ctx }) {
 const toWarnRow = (g: LogGroup, loudAt = 500) => ({
   count: g.count,
   msg: g.msg,
-  window: g.first && g.last ? `first ${rel(g.first)} · last ${rel(g.last)}` : '',
+  window: g.first && g.last ? `first ${relativeAge(g.first)} · last ${relativeAge(g.last)}` : '',
   bad: g.count > loudAt
 });
 
@@ -258,19 +258,6 @@ function NoErrors({ go }: { go: () => void }) {
   );
 }
 
-const Empty = ({ text }: { text: string }) => (
-  <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)' }}>{text}</div>
-);
-
-function rel(ts: number) {
-  const ms = Date.now() - ts;
-  if (!Number.isFinite(ms) || ms < 0) return '-';
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
 
 /**
  * Semantic clustering, reported as a DIFF against the regex grouping.

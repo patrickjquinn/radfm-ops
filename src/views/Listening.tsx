@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid, Panel, SkelStats } from '../components/primitives';
+import { Bar, Callout, Collapsible, Prose, SectionHead, Source, StatGrid, Panel, SkelStats, SkelBars, Empty } from '../components/primitives';
 import { statValue, useAdminStats, useAePlays } from '../lib/api';
 
 /**
@@ -22,7 +22,18 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
   // window asked for. It used to widen 24h to 7d silently and explain itself in
   // the panel, which was honest about the result and misleading about the control.
   const days = Math.round(ctx.hours / 24);
-  const plays = useAePlays(days, !ctx.demo);
+  /**
+   * Two requests, so the daily series is not aggregated twice.
+   *
+   * health.ts reads the trend as `useAePlays(7, live, 'daily')` on every view.
+   * This asked for all four panels, and `fields` is part of the query key - so
+   * with this view on its 7d default the server ran the identical daily
+   * aggregate for both keys, giving back one of the queries the AE audit had
+   * just removed. Splitting it means the 7d case shares health's key exactly and
+   * TanStack dedupes it; 30d and 90d are new keys either way.
+   */
+  const plays = useAePlays(days, !ctx.demo, 'totals,artists,tracks');
+  const trend = useAePlays(days, !ctx.demo, 'daily');
   const stats = useAdminStats(!ctx.demo);
   const registered = stats.state === 'ok' ? statValue(stats.data.users) : null;
 
@@ -80,20 +91,24 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
                 ]}
               />
 
-              <Panel title="Plays and listeners by day" meta={`rad_fm_events · ${d.daily.length} day${d.daily.length === 1 ? '' : 's'} recorded`}>
-                {d.daily.length ? (
+              <Source data={trend} what="Daily plays" skeleton={<SkelBars rows={4} />}>
+                {(t) => {
+                  const daily = t.daily ?? [];
+                  return (
+              <Panel title="Plays and listeners by day" meta={`rad_fm_events · ${daily.length} day${daily.length === 1 ? '' : 's'} recorded`}>
+                {daily.length ? (
                   <>
-                    <DayRows rows={d.daily} />
+                    <DayRows rows={daily} />
                     {/*
                       The window asked for and the window that exists are different
                       numbers, and the gap is the whole caveat. An axis drawn across
                       30 empty days would read as "nobody listened", when it means
                       "nobody was measuring". Same class of lie as a false zero.
                     */}
-                    {d.daily.length < d.days && (
+                    {daily.length < t.days && (
                       <div style={{ paddingTop: 12 }}>
                         <Prose>
-                          Asked for {d.days} days, {d.daily.length} recorded.{' '}
+                          Asked for {t.days} days, {daily.length} recorded.{' '}
                           <strong style={{ fontWeight: 500, color: C.warnText }}>
                             The days before that are empty because instrumentation did not exist
                           </strong>
@@ -107,12 +122,15 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
                   <Empty text="No plays recorded in this window." />
                 )}
               </Panel>
+                  );
+                }}
+              </Source>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,320px),1fr))', gap: 20 }}>
                 <Panel title="Top artists" meta="by plays">
-                  {d.artists.length ? (
+                  {(d.artists ?? []).length ? (
                     <RankRows
-                      rows={d.artists.map((a) => ({
+                      rows={(d.artists ?? []).map((a) => ({
                         label: a.artist,
                         value: Number(a.plays),
                         note: `${a.listeners} listener${Number(a.listeners) === 1 ? '' : 's'}`
@@ -124,9 +142,9 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
                 </Panel>
 
                 <Panel title="Top tracks" meta="by plays">
-                  {d.tracks.length ? (
+                  {(d.tracks ?? []).length ? (
                     <RankRows
-                      rows={d.tracks.map((t2) => ({
+                      rows={(d.tracks ?? []).map((t2) => ({
                         label: t2.title,
                         value: Number(t2.plays),
                         note: t2.artist
@@ -142,9 +160,9 @@ export default function Listening({ ctx }: { ctx: Ctx }) {
                 A top-15 chart with counts in single digits is a ranking of noise.
                 Saying so is cheaper than letting someone plan a playlist around it.
               */}
-              {d.artists.length > 0 && Number(d.artists[0]?.plays ?? 0) < 20 && (
+              {(d.artists ?? []).length > 0 && Number(d.artists![0]?.plays ?? 0) < 20 && (
                 <Prose>
-                  The top artist has {d.artists[0].plays} plays. At this volume the ranking is mostly noise - one
+                  The top artist has {d.artists![0].plays} plays. At this volume the ranking is mostly noise - one
                   listener on a long session moves it. Treat it as a sample of what is being played, not as a chart.
                 </Prose>
               )}
@@ -230,6 +248,3 @@ function RankRows({ rows }: { rows: { label: string; value: number; note: string
   );
 }
 
-const Empty = ({ text }: { text: string }) => (
-  <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: C.t3 }}>{text}</div>
-);

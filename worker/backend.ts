@@ -68,6 +68,7 @@ const ALLOWED_GET = [
  */
 const ALLOWED_POST = [/^\/admin\/promotions$/, /^\/admin\/promotions\/\d+\/retire$/];
 
+
 /**
  * Tier 1 runtime config only, and `operator` is enforced on the backend side -
  * this allowlist controls the shape of what can be asked for, never who may ask.
@@ -75,11 +76,32 @@ const ALLOWED_POST = [/^\/admin\/promotions$/, /^\/admin\/promotions\/\d+\/retir
  */
 const ALLOWED_PUT = [/^\/admin\/config\/[A-Z0-9_]+$/];
 
+/**
+ * One table, so a method is allowed in exactly one place.
+ *
+ * Adding POST touched four sites - the 405 check, the list dispatch, and two
+ * `method === 'PUT' || method === 'POST'` body conditions - and a fifth method
+ * would touch four more. On the privilege boundary of this Worker, "remember to
+ * update three of the four places" is precisely the failure you do not want:
+ * the allowlist concept is sound, only its dispatch had accreted.
+ *
+ * An unlisted method now cannot reach the backend at all, because the absence of
+ * a key IS the refusal rather than a separate check that can fall out of step.
+ */
+const ALLOWED: Partial<Record<string, RegExp[]>> = {
+  GET: ALLOWED_GET,
+  POST: ALLOWED_POST,
+  PUT: ALLOWED_PUT
+};
+
 app.all('/*', async (c) => {
   const method = c.req.method;
-  if (method !== 'GET' && method !== 'PUT' && method !== 'POST') {
+  const allowed = ALLOWED[method];
+  if (!allowed) {
     return c.json({ error: 'read_only', detail: 'Only config writes and promotions may cross this proxy' }, 405);
   }
+  // Everything but GET carries a JSON body.
+  const hasBody = method !== 'GET';
 
   // The operator's own Rad.FM JWT, in order of preference:
   //
@@ -109,7 +131,6 @@ app.all('/*', async (c) => {
   if (!jwt && !accessJwt) return c.json({ error: 'no_backend_token' }, 401);
 
   const path = new URL(c.req.url).pathname.replace(/^\/api\/backend/, '');
-  const allowed = method === 'GET' ? ALLOWED_GET : method === 'POST' ? ALLOWED_POST : ALLOWED_PUT;
   if (!allowed.some((re) => re.test(path))) return c.json({ error: 'not_allowed' }, 404);
 
   const target = new URL(path, c.env.BACKEND_ORIGIN);
@@ -128,9 +149,9 @@ app.all('/*', async (c) => {
       // Sent unconditionally and harmlessly ignored until that application exists,
       // so the backend side can land without a redeploy here.
       ...(accessJwt ? { 'Cf-Access-Token': accessJwt } : {}),
-      ...(method === 'PUT' || method === 'POST' ? { 'Content-Type': 'application/json' } : {})
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {})
     },
-    body: method === 'PUT' || method === 'POST' ? await c.req.text() : undefined
+    body: hasBody ? await c.req.text() : undefined
   });
 
   // Diagnostics on failure only. A 404 from /admin/* is deliberately ambiguous

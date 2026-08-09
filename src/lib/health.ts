@@ -45,7 +45,6 @@ export type Badge = { text: string; kind: 'bad' | 'warn' | 'plain' };
  * the number means nothing. Below the floor no claim is made either way, which is
  * different from claiming health.
  */
-const DJ_NONOK_WARN = 25;
 
 /**
  * Fallbacks, as a share of DJ breaks. This is the number that describes damage.
@@ -252,7 +251,16 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     { s: onAir, label: 'Air status', go: 'listening' as ViewId }
   ];
 
-  const unreadable = sources.filter((x) => x.s.state === 'unavailable');
+  /*
+    Carries the reason with it, so consumers do not re-narrow.
+    
+    `filter` does not narrow the union, so every read of `.reason` below needed
+    a redundant state check with an unreachable else branch. Mapping to the
+    reason here does the narrowing once, where it is provably correct.
+  */
+  const unreadable = sources.flatMap((x) =>
+    x.s.state === 'unavailable' ? [{ ...x, reason: x.s.reason }] : []
+  );
   /**
    * Sources that have not answered yet. Never turned into signals - "still
    * loading" is not a finding and would put rows on the page that vanish a
@@ -268,10 +276,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     signals.push({
       id: `signal:unread:${u.go}`,
       title: `${u.label} could not be read`,
-      evidence:
-        u.s.state === 'unavailable'
-          ? reasonShort(u.s.reason)
-          : '',
+      evidence: reasonShort(u.reason),
       metric: 'unavailable',
       source: u.label,
       action: `Open ${u.label} and read the reason it prints. A 404 has three causes and the API will not say which - the per-IP admin rate limiter is much the likeliest if this worked a minute ago, so reload once before assuming worse.`,
@@ -363,7 +368,18 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     hit exactly that: stutter, 4 rejections, 4 reaching listeners, invisible
     under a panel dominated by 43 harmless similes.
   */
-  if (djFellBackPct != null && hours >= DJ_MIN_WINDOW_HOURS && djFellBackPct >= DJ_FELLBACK_WARN)
+  /*
+    One predicate for the signal and the nav badge.
+    
+    It was written out twice, and the badge's copy carried an extra
+    `djFellBack != null` clause the signal's did not. Two spellings of one
+    condition is exactly how a badge and a header come to disagree - which is
+    the failure this module was centralised to prevent.
+  */
+  const djFallbackOpen =
+    djFellBack != null && djFellBackPct != null && hours >= DJ_MIN_WINDOW_HOURS && djFellBackPct >= DJ_FELLBACK_WARN;
+
+  if (djFallbackOpen)
     signals.unshift({
       id: 'signal:dj-fellback',
       title: 'Listeners are hearing canned DJ lines',
@@ -499,7 +515,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
    * be the false-zero mistake in signal form.
    */
   const playsToday = plays.state === 'ok' ? Number(plays.data.totals?.plays ?? 0) : null;
-  const daysDeep = playsTrend.state === 'ok' ? playsTrend.data.daily.length : 0;
+  const daysDeep = playsTrend.state === 'ok' ? (playsTrend.data.daily?.length ?? 0) : 0;
   const playLogLive = playsTrend.state === 'ok' && daysDeep > 0;
   if (playsToday === 0 && playLogLive)
     signals.unshift({
@@ -595,8 +611,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
   if (warnTotal) badges.logs = { text: compact(warnTotal), kind: 'plain' };
   // The badge counts fallbacks, not rejections - a nav badge lit by the guard
   // doing its job is a badge you learn to ignore.
-  if (djFellBack != null && djFellBackPct != null && hours >= DJ_MIN_WINDOW_HOURS && djFellBackPct >= DJ_FELLBACK_WARN)
-    badges.rad = { text: String(djFellBack), kind: 'warn' };
+  if (djFallbackOpen) badges.rad = { text: String(djFellBack), kind: 'warn' };
   if (recsPct != null && recsPct >= RECS_DEGRADED_WARN) badges.recs = { text: `${Math.round(recsPct)}%`, kind: 'warn' };
 
   /*
@@ -618,18 +633,23 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     The count is qualified while sources are outstanding, because "1 signal open"
     computed over a partial read could become 2.
   */
-  const bad = open.filter((x) => x.sev === 'bad').length;
+  // Derived once. This was recomputed three more times inside the branch below,
+  // and the `!` and `?? ''` that guarded those copies only existed because the
+  // list was not in scope - in an arm that by definition only runs when it is
+  // non-empty.
+  const bads = open.filter((x) => x.sev === 'bad');
+  const bad = bads.length;
   const stillReading = pending.length;
   const verdict: Verdict = bad
     ? {
         tone: 'bad',
         title: `Degraded - ${open.length} signal${open.length === 1 ? '' : 's'} open`,
         sub: stillReading
-          ? `${open.filter((x) => x.sev === 'bad')[0]?.title ?? ''}. ${stillReading} source${
+          ? `${bads[0].title}. ${stillReading} source${
               stillReading === 1 ? ' is' : 's are'
             } still reading, so there may be more.`
-          : open.filter((x) => x.sev === 'bad').length === 1
-            ? `${open.find((x) => x.sev === 'bad')!.title}.`
+          : bads.length === 1
+            ? `${bads[0].title}.`
             : 'The failing signals are listed first below, ranked by blast radius.',
         stats: []
       }
@@ -649,7 +669,8 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
     ? {
         // Never "Healthy" on the strength of sources we could not reach. That is a
         // different claim, and only one of them is supported by the data.
-        tone: bad ? 'bad' : 'warn',
+        // `bad` is 0 in this arm - the failing case is handled above.
+        tone: 'warn',
         title: `Unverified - ${unreadable.length} source${unreadable.length === 1 ? '' : 's'} could not be read`,
         sub: 'This is not a claim that anything is healthy. Nothing below has been confirmed against the live system.',
         stats: [
@@ -715,7 +736,7 @@ export function useHealth(hours: number, demo: Scenario | null, expiringInDays: 
    * at present there is exactly one complete day of history, so this correctly
    * shows nothing at all.
    */
-  const trend = playsTrend.state === 'ok' ? playsTrend.data.daily : [];
+  const trend = playsTrend.state === 'ok' ? (playsTrend.data.daily ?? []) : [];
   const today = new Date().toISOString().slice(0, 10);
   const complete = trend.filter((d) => String(d.day).slice(0, 10) < today);
   const playsChange =

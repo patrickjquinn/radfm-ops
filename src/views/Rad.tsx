@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
-import { Bar, Collapsible, Prose, SectionHead, Source, Panel, SkelBars, SkelRows } from '../components/primitives';
+import { Bar, Collapsible, Prose, SectionHead, Source, Panel, SkelBars, SkelRows, Empty, relativeAge } from '../components/primitives';
 import { useAeDj, useAeDjLines, useAeDjSessions, useAeProbe, useAeUpstream, type DjLine, type DjSession } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
@@ -510,7 +510,7 @@ function SessionRows({
               {r.n} break{r.n === 1 ? '' : 's'}
             </span>
             <span style={{ width: 62, textAlign: 'right', font: `400 11px/1.2 ${FONT.mono}`, color: C.t3 }}>
-              {rel(r.lastAt)}
+              {relativeAge(r.lastAt)}
             </span>
           </button>
         );
@@ -520,13 +520,3 @@ function SessionRows({
 }
 
 /** Relative age from an Analytics Engine timestamp string. */
-function rel(at: string): string {
-  const t = Date.parse(at);
-  if (!Number.isFinite(t)) return '-';
-  const m = Math.max(0, Math.round((Date.now() - t) / 60_000));
-  return m < 1 ? 'now' : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`;
-}
-
-const Empty = ({ text }: { text: string }) => (
-  <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)' }}>{text}</div>
-);

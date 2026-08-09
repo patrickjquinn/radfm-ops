@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Bar, Callout, Prose, SectionHead, Source, StatGrid, Panel, SkelStats, SkelKeyRows } from '../components/primitives';
+import { Bar, Callout, Prose, SectionHead, Source, StatGrid, Panel, SkelStats, SkelKeyRows, Empty } from '../components/primitives';
 import { useActivation, useGrowth, useRevenue } from '../lib/api';
 import { STATE } from '../lib/vocabulary';
 
@@ -220,6 +220,3 @@ function ActRows({ rows }: { rows: { day: string; activated: number }[] }) {
   );
 }
 
-const Empty = ({ text }: { text: string }) => (
-  <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: C.t3 }}>{text}</div>
-);

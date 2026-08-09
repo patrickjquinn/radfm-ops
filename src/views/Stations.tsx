@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
-import { Collapsible, Panel, Prose, Source, SkelRows } from '../components/primitives';
+import { Collapsible, Panel, Prose, Source, SkelRows, Empty } from '../components/primitives';
 import { useStations, type Station } from '../lib/api';
 
 /**
@@ -177,9 +177,6 @@ function Rows({ rows }: { rows: Station[] }) {
   );
 }
 
-const Empty = ({ text }: { text: string }) => (
-  <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)' }}>{text}</div>
-);
 
 /** Shapes only - the live counts are 341 stations, all user-generated, ~1 sub each. */
 const DEMO_STATIONS: Station[] = [

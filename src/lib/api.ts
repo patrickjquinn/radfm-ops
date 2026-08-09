@@ -62,7 +62,7 @@ export const setJwt = (v: string) => {
   else localStorage.removeItem(JWT_KEY);
 };
 
-async function getJson(path: string, init?: RequestInit) {
+async function getJson(path: string, init?: RequestInit, statusReasons?: Record<number, string>) {
   const res = await fetch(path, init);
   const text = await res.text();
   let body: any = null;
@@ -72,8 +72,11 @@ async function getJson(path: string, init?: RequestInit) {
     throw Object.assign(new Error('bad_response'), { reason: 'bad_response', detail: text.slice(0, 200) });
   }
   if (!res.ok) {
-    const reason = res.status === 404 ? 'not_found' : (body?.error ?? `http_${res.status}`);
-    throw Object.assign(new Error(reason), { reason, detail: body?.detail });
+    // Callers may name the statuses that mean something specific to them; 404
+    // stays the shared default because its three causes are the same everywhere.
+    const reason =
+      statusReasons?.[res.status] ?? (res.status === 404 ? 'not_found' : (body?.error ?? `http_${res.status}`));
+    throw Object.assign(new Error(reason), { reason, detail: body?.detail ?? body?.message });
   }
   // The BFF reports named failures in-band so a 200 can still mean "could not ask".
   if (body && body.ok === false) {
@@ -489,7 +492,19 @@ export const usePromotionSearch = (q: string, kind: 'song' | 'artist', enabled: 
       // Two characters is a 400 on the backend. Not asking is better than
       // rendering an error the operator caused by typing one letter.
       enabled: enabled && q.trim().length >= 2,
-      ...common
+      ...common,
+      /**
+       * Never refetched by the clock.
+       *
+       * `refresh()` invalidates every query, so with this view open and a term
+       * searched, each auto-refresh re-issued a catalogue search whose answer
+       * cannot have changed - a round trip into Apple on the backend, spending
+       * the per-IP admin rate limiter that the two-minute refresh floor exists
+       * to protect. A fixed query string is static for the session, so the only
+       * thing that should refetch it is typing a different one.
+       */
+      staleTime: Infinity,
+      refetchOnMount: false
     })
   );
 
@@ -503,33 +518,35 @@ export const usePromotions = (includeRetired: boolean, enabled: boolean) =>
     })
   );
 
-/** Shared POST plumbing. Surfaces the backend's own reason text, never a generic failure. */
-async function promoPost(path: string, body?: unknown) {
-  const res = await fetch(`/api/backend${path}`, {
-    method: 'POST',
-    headers: { 'X-Rad-Jwt': getJwt(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body ?? {})
-  });
-  const text = await res.text();
-  const parsed = text ? JSON.parse(text) : null;
-  if (!res.ok) {
-    /*
-      The API's reasons are specific and each one is actionable, so they are
-      carried through rather than flattened. A 400 for unresolvable targeting in
-      particular has to reach the operator verbatim - "no target genres" means
-      the promotion would match NOTHING rather than everything, and a generic
-      "failed" would send them to look at the wrong thing entirely.
-    */
-    const reason =
-      res.status === 409
-        ? 'already_promoted'
-        : res.status === 404
-          ? 'not_in_storefront'
-          : (parsed?.error ?? `http_${res.status}`);
-    throw Object.assign(new Error(reason), { reason, detail: parsed?.detail ?? parsed?.message });
-  }
-  return parsed;
-}
+/**
+ * Writes to the backend, on the same plumbing as every read.
+ *
+ * This was a hand-rolled fetch/parse/throw - the third copy of `getJson`'s body
+ * in this file - and it had already drifted from it in two ways that matter.
+ * It had no try/catch around JSON.parse, so a proxy failure returning HTML threw
+ * a raw SyntaxError that `lift` surfaced to the operator as the literal parser
+ * message; and it did not honour the BFF's in-band `{ok:false}` convention, so a
+ * named failure arriving with a 200 would have been read as success.
+ *
+ * `statusReasons` is the only thing a caller genuinely needs to vary: the API's
+ * refusals are specific and each one is actionable, so 409 and 404 get named
+ * rather than flattened into `http_409`.
+ */
+const backendWrite = (
+  method: 'POST' | 'PUT',
+  path: string,
+  body: unknown,
+  statusReasons?: Record<number, string>
+) =>
+  getJson(
+    `/api/backend${path}`,
+    {
+      method,
+      headers: { 'X-Rad-Jwt': getJwt(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {})
+    },
+    statusReasons
+  );
 
 export const useCreatePromotion = () => {
   const qc = useQueryClient();
@@ -541,12 +558,12 @@ export const useCreatePromotion = () => {
       targetGenres?: string[];
       weight?: number;
       dailyCapPerUser?: number;
-    }) => promoPost('/admin/promotions', body),
+    }) => backendWrite('POST', '/admin/promotions', body, { 409: 'already_promoted', 404: 'not_in_storefront' }),
     // The audit view too: a write that does not appear there is a bug in the
     // audit trail, and this is the first place it would be visible.
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['promotions'] });
-      qc.invalidateQueries({ queryKey: ['admin-audit'] });
+      qc.invalidateQueries({ queryKey: ['audit'] });
     }
   });
 };
@@ -554,10 +571,10 @@ export const useCreatePromotion = () => {
 export const useRetirePromotion = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => promoPost(`/admin/promotions/${id}/retire`),
+    mutationFn: (id: number) => backendWrite('POST', `/admin/promotions/${id}/retire`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['promotions'] });
-      qc.invalidateQueries({ queryKey: ['admin-audit'] });
+      qc.invalidateQueries({ queryKey: ['audit'] });
     }
   });
 };
@@ -748,7 +765,19 @@ export type PlayTrack = { title: string; artist: string; plays: string };
  * a top-15 ranking that only the Listening view displays.
  */
 export const useAePlays = (days: number, enabled = true, fields?: string) =>
-  lift<{ days: number; totals: PlayTotals | null; daily: PlayDay[]; artists: PlayArtist[]; tracks: PlayTrack[] }>(
+  /*
+    Optional, because the route now OMITS panels that were not requested rather
+    than returning them empty. A required type here would promise a caller that
+    `daily` exists when it asked only for `totals` - which is the same class of
+    lie as the empty-array-for-an-unrun-query it replaced.
+  */
+  lift<{
+    days: number;
+    totals?: PlayTotals | null;
+    daily?: PlayDay[];
+    artists?: PlayArtist[];
+    tracks?: PlayTrack[];
+  }>(
     useQuery({ queryKey: ['ae-plays', days, fields ?? 'all'], queryFn: () => cfGet(`/ae/plays?days=${days}${fields ? `&fields=${fields}` : ''}`), enabled, ...common })
   );
 

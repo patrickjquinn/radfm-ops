@@ -1,6 +1,6 @@
 import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
-import { Prose, SectionHead, Source, StatGrid, Panel, SkelStats, SkelRows } from '../components/primitives';
+import { Prose, SectionHead, Source, StatGrid, Panel, SkelStats, SkelRows, Empty } from '../components/primitives';
 import { useAeRecs } from '../lib/api';
 import * as fx from '../lib/fixtures';
 import { WEIGHTS_SOURCE, weights } from '../lib/constants';
@@ -287,6 +287,3 @@ function CauseRows({ rows }: { rows: { cause: string; n: number }[] }) {
   );
 }
 
-const Empty = ({ text }: { text: string }) => (
-  <div style={{ padding: '22px 0', font: `400 12.5px/1.5 ${FONT.text}`, color: 'rgba(255,255,255,0.5)' }}>{text}</div>
-);

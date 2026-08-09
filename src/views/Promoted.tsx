@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Ctx } from '../App';
 import { C, CARD, FONT, LINE, MOTION, GAP, focusLift, num } from '../theme';
 import { Icon } from '../icons';
-import { Bar, Callout, Panel, Prose, Skel, SkelRows, Source, StatGrid } from '../components/primitives';
+import { Bar, Callout, Panel, Prose, Skel, SkelRows, Source, StatGrid, Empty } from '../components/primitives';
 import {
   artworkUrl,
   useCreatePromotion,
@@ -78,6 +78,16 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
         of the page cannot answer from a single row: a promotion can look busy
         and touch almost nobody.
       */}
+      {list.state === 'unavailable' && (
+        // Everywhere else in this product an unreadable source says so. This row
+        // simply vanished, which reads as "no campaigns" - the false zero the
+        // whole dashboard exists to refuse.
+        <Panel title="Campaign" meta="admin/promotions">
+          <Source data={list} what="Promotions">
+            {() => null}
+          </Source>
+        </Panel>
+      )}
       {list.state === 'ok' && active.length > 0 && (
         <StatGrid
           min={190}
@@ -230,7 +240,8 @@ export default function Promoted({ ctx }: { ctx: Ctx }) {
       {/* ── What is currently promoted ────────────────────────────────────── */}
       <Panel
         title="Promotions"
-        meta={
+        meta="admin/promotions · lifetime counts"
+        control={
           <button
             type="button"
             onClick={() => setIncludeRetired((v) => !v)}
@@ -325,6 +336,8 @@ function ResultCard({
   const [weight, setWeight] = useState(1);
   const [cap, setCap] = useState(2);
   const noGenres = !r.genres?.length;
+  // Both reasons the button cannot fire, named once.
+  const blocked = busy || noGenres;
 
   return (
     <div
@@ -402,15 +415,15 @@ function ResultCard({
               </button>
               <button
                 type="button"
-                disabled={busy || noGenres}
+                disabled={blocked}
                 onClick={() => onPromote({ weight, dailyCapPerUser: cap })}
                 style={{
                   height: 34,
                   padding: '0 16px',
                   borderRadius: 8,
-                  border: `1px solid ${busy || noGenres ? 'rgba(255,255,255,0.08)' : 'rgba(63,179,166,0.45)'}`,
-                  background: busy || noGenres ? 'rgba(255,255,255,0.03)' : 'rgba(63,179,166,0.14)',
-                  color: busy || noGenres ? C.t3 : C.ok,
+                  border: `1px solid ${blocked ? 'rgba(255,255,255,0.08)' : 'rgba(63,179,166,0.45)'}`,
+                  background: blocked ? 'rgba(255,255,255,0.03)' : 'rgba(63,179,166,0.14)',
+                  color: blocked ? C.t3 : C.ok,
                   font: `500 12.5px/1 ${FONT.text}`,
                   cursor: busy ? 'wait' : noGenres ? 'not-allowed' : 'pointer',
                   transition: `background ${MOTION}`
@@ -866,6 +879,3 @@ const SkelCards = () => (
   </div>
 );
 
-const Empty = ({ text }: { text: string }) => (
-  <div style={{ padding: '22px 0', font: `400 12.5px/1.55 ${FONT.text}`, color: C.t3, maxWidth: '76ch' }}>{text}</div>
-);

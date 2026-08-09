@@ -831,7 +831,22 @@ app.get('/ae/plays', async (c) => {
    * which of the four panels it wants, and nothing about the SQL is
    * client-controlled.
    */
-  const want = new Set((c.req.query('fields') ?? 'totals,daily,artists,tracks').split(','));
+  const PANELS = ['totals', 'daily', 'artists', 'tracks'] as const;
+  const want = new Set((c.req.query('fields') ?? PANELS.join(',')).split(','));
+  /*
+    An unknown field name is a 400, not a silent empty result.
+    
+    `skip` resolves to an empty result set, so `fields=total` (a typo) used to
+    return `totals: null, daily: [], artists: [], tracks: []` with `ok: true` -
+    a confident, well-formed zero from a query that was never run. That is the
+    founding bug of this product reintroduced by its own optimisation, and it is
+    exactly the shape of the `daysDeep` defect this same audit removed: a caller
+    counting a field its own request could not fill.
+  */
+  const unknown = [...want].filter((f) => !(PANELS as readonly string[]).includes(f));
+  if (unknown.length)
+    return c.json(fail('bad_request', `unknown fields: ${unknown.join(', ')}. Valid: ${PANELS.join(', ')}`), 400);
+
   const skip = Promise.resolve({ ok: true as const, data: { data: [] as any[] } });
 
   const win = `timestamp > now() - INTERVAL '${days}' DAY`;
@@ -862,15 +877,20 @@ app.get('/ae/plays', async (c) => {
        GROUP BY title, artist ORDER BY plays DESC LIMIT 15`
     )
   ]);
-  for (const q of [totals, daily, artists, tracks]) if (q.ok === false) return c.json(q);
+  for (const res of [totals, daily, artists, tracks]) if (res.ok === false) return c.json(res);
 
+  /*
+    Only the panels that were asked for. An unrequested key is ABSENT rather
+    than empty, so a consumer that forgot to request one reads `undefined` and
+    fails loudly in development, instead of rendering a plausible zero.
+  */
   return c.json({
     ok: true,
     days,
-    totals: totals.data?.data?.[0] ?? null,
-    daily: daily.data?.data ?? [],
-    artists: artists.data?.data ?? [],
-    tracks: tracks.data?.data ?? []
+    ...(want.has('totals') ? { totals: totals.data?.data?.[0] ?? null } : {}),
+    ...(want.has('daily') ? { daily: daily.data?.data ?? [] } : {}),
+    ...(want.has('artists') ? { artists: artists.data?.data ?? [] } : {}),
+    ...(want.has('tracks') ? { tracks: tracks.data?.data ?? [] } : {})
   });
 });
 
@@ -1055,7 +1075,17 @@ app.get('/ae/recs', async (c) => {
   const gate = requireToken(c.env);
   if (gate) return c.json(gate);
   const hours = clampHours(c.req.query('hours'), 24);
-  const out = await ae(
+  /*
+    Both queries in flight together.
+    
+    `causes` groups by a different column, so it cannot fold into the query
+    below - but it does not depend on it either, and it was left sequential
+    behind an `await` when the zero-track count was folded out of it. /ae/recs
+    is read by useHealth from EVERY view and again on every auto-refresh, so a
+    needless serial round trip here is on the hottest server path in the app.
+  */
+  const [out, causes] = await Promise.all([
+    ae(
     c.env,
     /*
       countIf folds what used to be its own query into this one.
@@ -1072,26 +1102,24 @@ app.get('/ae/recs', async (c) => {
      FROM rad_fm_events
      WHERE blob1 = 'recs' AND timestamp > now() - INTERVAL '${hours}' HOUR
      GROUP BY source ORDER BY n DESC`
-  );
-  if (out.ok === false) return c.json(out);
-
-  /**
-   * Two things `degraded` cannot tell you, both of which the backend added on
-   * 6 Aug and both of which matter more than the degraded rate itself:
-   *
-   *   1. Requests that returned ZERO tracks. Degraded is the seatbelt; zero is the
-   *      crash. Zero-track requests are not flagged degraded, so three of them sat
-   *      invisible under a "19 degraded" headline. `double1` is trackCount.
-   *   2. WHY the pool collapsed. `blob5` (poolSource) used to be the bare string
-   *      `error` for everything. It now separates `error:deadline` (upstreams slow,
-   *      expected ~2%, NOT a code fault) from `error:validation` (a caller bug -
-   *      the listener gets nothing). Those demand opposite responses.
-   *
-   * Rows written before the backend's 4fa6f58e still read bare `error`; they are
-   * reported as `legacy` rather than bucketed with `error:other`, because "cause
-   * unknown" and "cause was other" are different claims.
-   */
-  const [causes] = await Promise.all([
+    ),
+    /**
+     * Two things `degraded` cannot tell you, both of which the backend added on
+     * 6 Aug and both of which matter more than the degraded rate itself:
+     *
+     *   1. Requests that returned ZERO tracks. Degraded is the seatbelt; zero is
+     *      the crash. Zero-track requests are not flagged degraded, so three sat
+     *      invisible under a "19 degraded" headline. `double1` is trackCount.
+     *   2. WHY the pool collapsed. `blob5` (poolSource) used to be the bare
+     *      string `error` for everything. It now separates `error:deadline`
+     *      (upstreams slow, expected ~2%, NOT a code fault) from
+     *      `error:validation` (a caller bug - the listener gets nothing). Those
+     *      demand opposite responses.
+     *
+     * Rows written before the backend's 4fa6f58e still read bare `error`; they
+     * are reported as `legacy` rather than bucketed with `error:other`, because
+     * "cause unknown" and "cause was other" are different claims.
+     */
     ae(
       c.env,
       // ONLY the error causes. poolSource also carries the healthy pipeline names
@@ -1103,6 +1131,7 @@ app.get('/ae/recs', async (c) => {
        GROUP BY cause ORDER BY n DESC`
     )
   ]);
+  if (out.ok === false) return c.json(out);
 
   return c.json({
     ok: true,

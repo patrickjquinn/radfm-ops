@@ -13,7 +13,25 @@ import { reasonText, type Loaded } from '../lib/api';
  * control beside the thing it scopes rather than inventing a second row of
  * chrome above the panel.
  */
-export function SectionHead({ title, meta }: { title: string; meta?: React.ReactNode }) {
+export function SectionHead({
+  title,
+  meta,
+  control
+}: {
+  title: string;
+  meta?: React.ReactNode;
+  /**
+   * A control over the panel's scope, beside the provenance rather than instead
+   * of it.
+   *
+   * `meta` was widened to ReactNode so the promotions panel could put a
+   * retired-rows toggle there - and that panel promptly became the only one in
+   * the product with no source note, under a comment two lines below saying
+   * "provenance on every panel". Widening the slot was right; repurposing it was
+   * not. A panel can now say where its numbers came from AND carry its toggle.
+   */
+  control?: React.ReactNode;
+}) {
   return (
     <div
       style={{
@@ -38,7 +56,10 @@ export function SectionHead({ title, meta }: { title: string; meta?: React.React
       </h2>
       {/* Provenance on every panel. These sources are not equally trustworthy
           and the UI must not flatten that. */}
-      {meta && <div style={{ font: `400 10.5px/1 ${FONT.mono}`, color: C.t3 }}>{meta}</div>}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flex: 'none' }}>
+        {meta && <div style={{ font: `400 10.5px/1 ${FONT.mono}`, color: C.t3 }}>{meta}</div>}
+        {control}
+      </div>
     </div>
   );
 }
@@ -181,6 +202,44 @@ export function Unavailable({ reason, detail, what }: { reason: string; detail?:
       </div>
     </div>
   );
+}
+
+/**
+ * "There is nothing here", said once.
+ *
+ * Seven views had defined this locally and four spellings had already appeared -
+ * two using `rgba(255,255,255,0.5)`, two using `C.t3`, and the newest adding its
+ * own line-height and max-width. An empty state that renders at a different
+ * leading depending on which panel you are looking at is the kind of drift that
+ * only ever gets worse, and it lives in the same family as `Loading` and
+ * `Unavailable`, which were already here.
+ */
+export function Empty({ text }: { text: string }) {
+  return (
+    <div style={{ padding: '22px 0', font: `400 12.5px/1.55 ${FONT.text}`, color: C.t3, maxWidth: '76ch' }}>{text}</div>
+  );
+}
+
+/**
+ * Relative age, from an epoch or an ISO/Analytics Engine timestamp.
+ *
+ * Logs and Rad each had a `rel()` - same name, same output vocabulary, different
+ * behaviour: only one rolled over to days, so a three-day-old DJ session read as
+ * "72h ago" on the Rad page while the identical age read "3d ago" on Logs.
+ * `Overview.relAge` is deliberately NOT folded in - it returns "3h" with no
+ * suffix for a narrow table column, which is a different output contract rather
+ * than the same one written twice.
+ */
+export function relativeAge(input: string | number): string {
+  const t = typeof input === 'number' ? input : Date.parse(input);
+  const ms = Date.now() - t;
+  if (!Number.isFinite(ms) || ms < 0) return '-';
+  const m = Math.floor(ms / 60_000);
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 export function Loading({ what }: { what: string }) {
@@ -431,6 +490,7 @@ export function Generated({
 }: {
   model: string;
   meta?: React.ReactNode;
+  control?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -582,18 +642,20 @@ export function Collapsible<T>({
 export function Panel({
   title,
   meta,
+  control,
   children,
   pad = true
 }: {
   title: string;
   meta?: React.ReactNode;
+  control?: React.ReactNode;
   children: React.ReactNode;
   pad?: boolean;
 }) {
   return (
     <section style={{ ...CARD, padding: pad ? 'clamp(16px,1.8vw,22px)' : 0 }}>
       <div style={{ padding: pad ? 0 : 'clamp(16px,1.8vw,22px) clamp(16px,1.8vw,22px) 0' }}>
-        <SectionHead title={title} meta={meta} />
+        <SectionHead title={title} meta={meta} control={control} />
       </div>
       <div style={{ padding: pad ? 0 : '0 clamp(16px,1.8vw,22px) clamp(8px,1vw,12px)' }}>{children}</div>
     </section>
