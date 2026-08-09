@@ -237,9 +237,22 @@ export const useLogs = (level: 'warn' | 'error', hours: number) =>
 export const useAeProbe = () =>
   lift<{ rows: any[] }>(useQuery({ queryKey: ['ae-probe'], queryFn: () => cfGet('/ae/probe'), ...common }));
 
-export const useAeDj = (hours: number) =>
-  lift<{ rows: any[] }>(
-    useQuery({ queryKey: ['ae-dj', hours], queryFn: () => cfGet(`/ae/dj?hours=${hours}`), ...common })
+/**
+ * `since` is the current BACKEND deploy time, and it is what stops the
+ * window-versus-deploy-time confusion recurring.
+ *
+ * A count over a window says nothing about whether a fix landed, because the
+ * window spans the deploy. This has now misled both sides in both directions
+ * inside three days. Passing the deploy timestamp lets the row say "0 since
+ * deploy (2 in 6h)", which answers the only question anyone is actually asking.
+ */
+export const useAeDj = (hours: number, since?: string | null) =>
+  lift<{ rows: any[]; since: string | null }>(
+    useQuery({
+      queryKey: ['ae-dj', hours, since ?? ''],
+      queryFn: () => cfGet(`/ae/dj?hours=${hours}${since ? `&since=${encodeURIComponent(since)}` : ''}`),
+      ...common
+    })
   );
 
 export type DjLine = {

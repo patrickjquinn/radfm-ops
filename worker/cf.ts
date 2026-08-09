@@ -922,16 +922,40 @@ app.get('/ae/dj', async (c) => {
    * 0 in both, which is indistinguishable from "did not fall back" - hence the
    * coverage note the view renders.
    */
+  /**
+   * "Since the current backend deploy", folded into the same query.
+   *
+   * The window-versus-deploy-time confusion has now misled both sides in both
+   * directions inside three days. A 72h window made a landed fix look broken
+   * because it still contained pre-fix events; then a "three hours clear" claim
+   * made an unproven fix look confirmed, because the fix had actually been live
+   * for 48 minutes of it - about 0.3 expected events at the observed base rate.
+   * The second is the more dangerous one: nobody goes looking at good news.
+   *
+   * `countIf`/`sumIf` means this costs no extra round trip, the same fold that
+   * removed the separate zero-track query. `since` reaches SQL, so it is
+   * validated to a literal datetime shape rather than escaped - the same rule
+   * the session parameter follows.
+   */
+  const rawSince = c.req.query('since') ?? '';
+  const sinceSql = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(rawSince)
+    ? rawSince.slice(0, 19).replace('T', ' ')
+    : null;
+  const sinceCols = sinceSql
+    ? `, countIf(timestamp > toDateTime('${sinceSql}')) AS nSince,
+         sumIf(double4, timestamp > toDateTime('${sinceSql}')) AS fellBackSince`
+    : '';
+
   const out = await ae(
     c.env,
     `SELECT blob3 AS reason, count() AS n,
-            sum(double3) AS regenerated, sum(double4) AS fellBack
+            sum(double3) AS regenerated, sum(double4) AS fellBack${sinceCols}
      FROM rad_fm_events
      WHERE blob1 = 'dj' AND timestamp > now() - INTERVAL '${hours}' HOUR
      GROUP BY reason ORDER BY n DESC`
   );
   if (out.ok === false) return c.json(out);
-  return c.json({ ok: true, rows: groupDjReasons(out.data?.data ?? []) });
+  return c.json({ ok: true, rows: groupDjReasons(out.data?.data ?? []), since: sinceSql });
 });
 
 /**
@@ -1047,13 +1071,15 @@ app.get('/ae/dj-sessions', async (c) => {
  * to log messages, for the same reason: one failure, one row.
  */
 export function groupDjReasons(rows: any[]) {
-  const byReason = new Map<string, { n: number; fellBack: number; regenerated: number }>();
+  const byReason = new Map<string, { n: number; fellBack: number; regenerated: number; nSince: number; fellBackSince: number }>();
   for (const r of rows) {
     const reason = String(r.reason ?? 'ok').replace(/\s*\(.*$/, '').trim() || 'ok';
-    const hit = byReason.get(reason) ?? { n: 0, fellBack: 0, regenerated: 0 };
+    const hit = byReason.get(reason) ?? { n: 0, fellBack: 0, regenerated: 0, nSince: 0, fellBackSince: 0 };
     hit.n += Number(r.n ?? 0);
     hit.fellBack += Number(r.fellBack ?? 0);
     hit.regenerated += Number(r.regenerated ?? 0);
+    hit.nSince += Number(r.nSince ?? 0);
+    hit.fellBackSince += Number(r.fellBackSince ?? 0);
     byReason.set(reason, hit);
   }
   return (

@@ -3,13 +3,23 @@ import type { Ctx } from '../App';
 import { C, FONT, LINE, num, GAP } from '../theme';
 import { Icon } from '../icons';
 import { Bar, Collapsible, Prose, SectionHead, Source, Panel, SkelBars, SkelRows, Empty, relativeAge } from '../components/primitives';
-import { useAeDj, useAeDjLines, useAeDjSessions, useAeProbe, useAeUpstream, type DjLine, type DjSession } from '../lib/api';
+import { useAeDj, useAeDjLines, useAeDjSessions, useAeProbe, useAeUpstream, useVersions, type DjLine, type DjSession } from '../lib/api';
 import * as fx from '../lib/fixtures';
 
 export default function Rad({ ctx }: { ctx: Ctx }) {
   const demo = ctx.demo;
   const probe = useAeProbe();
-  const dj = useAeDj(ctx.hours);
+  /*
+    The newest BACKEND deploy, so a reason row can separate "in this window"
+    from "since the code changed". /versions already queries rad-fm-backend for
+    the Overview deploy panel, so this costs nothing new.
+  */
+  const versions = useVersions();
+  const backendDeployedAt =
+    versions.state === 'ok'
+      ? (versions.data.versions?.[0]?.metadata?.created_on ?? versions.data.versions?.[0]?.created_on ?? null)
+      : null;
+  const dj = useAeDj(ctx.hours, backendDeployedAt);
   const upstream = useAeUpstream(ctx.hours);
   /**
    * A session, or none. The list is the entry point, the lines are the payload.
@@ -60,6 +70,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
                 reason: String(r.reason || 'ok'),
                 n: Number(r.n ?? 0),
                 fellBack: Number(r.fellBack ?? 0),
+                fellBackSince: d.since ? Number(r.fellBackSince ?? 0) : null,
                 share: ''
               }));
               const total = rows.reduce((a: number, b: any) => a + b.n, 0);
@@ -70,6 +81,7 @@ export default function Rad({ ctx }: { ctx: Ctx }) {
                   <DjRows
                     rows={rows.map((r: any) => ({ ...r, share: `${((r.n / total) * 100).toFixed(1)}%` }))}
                     incident={false}
+                    deployedAt={d.since}
                   />
                   {/*
                     Zero fallbacks and "we were not recording fallbacks" are
@@ -231,10 +243,13 @@ function UnverifiedBanner({ detail }: { detail?: string }) {
 
 function DjRows({
   rows,
-  incident
+  incident,
+  deployedAt
 }: {
-  rows: { reason: string; n: number; share: string; fellBack?: number }[];
+  rows: { reason: string; n: number; share: string; fellBack?: number; fellBackSince?: number | null }[];
   incident: boolean;
+  /** Current backend deploy time, or null when it could not be read. */
+  deployedAt?: string | null;
 }) {
   const max = Math.max(...rows.map((r) => r.n), 1);
   return (
@@ -266,16 +281,52 @@ function DjRows({
             </span>
             {/* The consequence column. Red when non-zero, because unlike the
                 rejection count this one describes something a listener heard. */}
-            <span
-              style={{
-                ...num,
-                width: 116,
-                textAlign: 'right',
-                font: `500 11.5px/1.2 ${FONT.mono}`,
-                color: d.fellBack ? C.bad : C.t3
-              }}
-            >
-              {d.reason === 'ok' ? '' : d.fellBack ? `${d.fellBack} reached` : '0 reached'}
+            {/*
+              Two numbers, because one of them cannot answer the question.
+              
+              A count over the window says nothing about whether a fix landed -
+              the window spans the deploy. "2 reached · 0 since deploy" is the
+              row that would have stopped both of the mistakes this pair of teams
+              made in three days: a 72h window making a landed fix look broken,
+              then a short window making an unproven one look confirmed.
+            */}
+            <span style={{ width: 168, textAlign: 'right', flex: 'none' }}>
+              <span
+                style={{
+                  ...num,
+                  display: 'block',
+                  font: `500 11.5px/1.2 ${FONT.mono}`,
+                  color: d.fellBack ? C.bad : C.t3
+                }}
+              >
+                {d.reason === 'ok' ? '' : d.fellBack ? `${d.fellBack} reached` : '0 reached'}
+              </span>
+              {d.reason !== 'ok' && deployedAt && d.fellBackSince != null && (
+                <span
+                  /*
+                    Say WHICH deploy and how long ago, or this number has the
+                    same defect the window had. It tracks the NEWEST backend
+                    version, so an unrelated deploy - a rename, a doc change -
+                    resets the evidence to zero elapsed time. "0 since deploy"
+                    eight minutes after a deploy is not the same claim as "0
+                    since deploy" six hours after one, and the row must not let
+                    those read alike.
+                  */
+                  title={`Since the newest rad-fm-backend deploy, ${deployedAt}Z (${relativeAge(
+                    deployedAt
+                  )}). Any deploy resets this, including one that changed nothing here.`}
+                  style={{
+                    ...num,
+                    display: 'block',
+                    marginTop: 3,
+                    font: `400 10.5px/1.2 ${FONT.mono}`,
+                    color: d.fellBackSince ? C.bad : C.ok,
+                    cursor: 'help'
+                  }}
+                >
+                  {d.fellBackSince} since deploy · {relativeAge(deployedAt)}
+                </span>
+              )}
             </span>
           </div>
           <Bar
